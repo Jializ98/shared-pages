@@ -1,0 +1,832 @@
+---
+title: "workflow_micro_NYC"
+author: "Jiali Zhu"
+date: "today"
+format:
+  html:
+    code-overflow: wrap
+    code-fold: true
+    code-summary: "Code"
+editor: visual
+---
+
+```{r}
+#| label: load-packages
+#| include: false
+#| warning: false
+
+library(zhulabtools)
+load_packages(c("dplyr","lubridate", "ggplot2", "sf", "readr", "purrr", "stringr","glue", "tidyr", "broom","lme4", "knitr", "broom.mixed"))
+```
+
+## 1. Insert tree id base on WU data
+
+For exploratory analysis, I used the street tree in NYC, with the phenology information established by Yiluan. These trees are part of the whole inventory, covering only 14 genera and being sampled. I select the trees which are within 500-m buffer around the weather underground sites.
+
+```{r}
+#| label: tree_wu_sites
+#| include: true
+#| warning: false
+
+################ For phenology data ################
+
+metadata <- read_csv("~/lab-data/datasets/vegetation/PS/urban/metadata.csv") %>%
+  filter(site == "NY")
+
+file_list <- list.files(path = "~/lab-data/datasets/vegetation/PS/urban/doy/", pattern = "^doy_NY_.*\\.rds$", full.names = TRUE)
+data_list <- file_list %>%
+  map(~ readRDS(.x))
+ny_now <- bind_rows(data_list)
+
+tree_location <- metadata %>%
+  mutate(genus = str_extract(taxa, "^[^ ]+")) %>%
+  left_join(ny_now, by = "id") %>%
+  filter(!is.na(doy)) %>%
+  st_as_sf(coords = c("lon", "lat"), crs = 4326)
+
+wu_location <- read_csv("~/urban-cooling/data/raw/WU/NY/location.csv") %>%
+  st_as_sf(coords = c("Lon", "Lat"), crs = 4326)
+wu_buffer <- st_buffer(wu_location, dist = 500)
+
+intersects <- st_intersects(tree_location, wu_buffer)
+points_in_buffer <- tree_location[lengths(intersects) > 0, ]
+points_in_buffer <- tree_location %>%
+  mutate(buffer_id = sapply(intersects, function(x) if (length(x) > 0) x[1] else NA)) %>% 
+  left_join(wu_buffer %>% st_drop_geometry() %>% mutate(buffer_id = row_number()), by = "buffer_id") %>%
+  filter(!is.na(buffer_id)) %>%
+  select(-buffer_id)
+
+# write_csv(points_in_buffer, "~/phenology-urban/data/proc/nyc/tree_WU_500_buffer_PS.csv")
+# points_in_buffer <- read_csv("data/proc/nyc/tree_WU_500_buffer_PS.csv")
+```
+
+```{r}
+#| label: plot_tree_wu_sites
+#| include: true
+#| fig-cap: "Location of WU sites and trees"
+#| warning: false
+
+nyboundary <- st_read("~/urban-cooling/data/raw/NYC/boundary/nybb_dissolved.shp") %>%
+  st_transform(4326)
+
+ggplot() +
+  geom_sf(data = nyboundary, fill = "grey") +
+  geom_sf(data = wu_location, color = "blue", size = 1) +
+  geom_sf(data = points_in_buffer, color = "red", size = 0.05) +
+  theme_minimal()
+```
+
+## 2. Creat the climate variable
+
+### 2.1 Read and clean the WU data (based on GHCNd)
+
+There are 4 raw daily variables selected, i.e. AvgTemp, HighTemp, LowTemp and Precipitation_sum (Sum_mm). I flagged the records which are unknown or questionable according to the methods applied by Global Historical Climatology Network daily [GHCNd](https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-daily).
+
+```{r}
+#| label: read_wu_data
+#| include: true
+#| warning: false
+
+source("~/phenology-urban/script/read_clean_WU.R")
+# all_sites_temp <- read_clean_WU(city = "NY", run_checks = TRUE)
+all_sites_temp <- readRDS("~/urban-cooling/data/raw/WU/NY/NY_wu.rds") %>%
+  select(c(Date, HighTemp, AvgTemp, LowTemp, Sum_mm, name))
+```
+
+### 2.2 Create seasonal temp/prcp variables
+
+The seasonal variable is calculated for each site, year, and season. The season is defined as Winter: December(last year) to February, Spring: March to May, Summer: June to August, Fall: September to November.
+
+```{r}
+#| label: create_seasonal_var
+#| include: true
+#| warning: false
+
+# filtered_seasonal_data <- all_sites_temp %>%
+#   mutate(
+#     year = year(Date),
+#     month = month(Date),
+#     season = case_when(
+#       month %in% 3:5 ~ "spring",
+#       month %in% 6:8 ~ "summer",
+#       month %in% 9:11 ~ "fall",
+#       TRUE ~ "winter"
+#     ),
+#     year = if_else(month == 12, year + 1, year)
+#   ) %>%
+#   group_by(name, year, season, month) %>%
+#   summarise(
+#     across(c(HighTemp, AvgTemp, LowTemp, Sum_mm), ~ sum(!is.na(.)), .names = "count_{.col}"),
+#     .groups = "drop"
+#   ) %>%
+#   group_by(name, year, season) %>%
+#   summarise(
+#     across(starts_with("count_"), ~ sum(. >= 10), .names = "valid_months_{.col}"),
+#     .groups = "drop"
+#   )
+# 
+# seasonal_temp <- all_sites_temp %>%
+#   mutate(
+#     year = year(Date),
+#     month = month(Date),
+#     season = case_when(
+#       month %in% 3:5 ~ "spring",
+#       month %in% 6:8 ~ "summer",
+#       month %in% 9:11 ~ "fall",
+#       TRUE ~ "winter"
+#     ),
+#     year = if_else(month == 12, year + 1, year)
+#   ) %>%
+#   # semi_join(valid_combinations, by = c("name", "year", "season")) %>%
+#   group_by(name, year, season) %>%
+#   summarise(
+#     Avg_HighTemp = mean(HighTemp, na.rm = TRUE),
+#     Avg_AvgTemp = mean(AvgTemp, na.rm = TRUE),
+#     Avg_LowTemp = mean(LowTemp, na.rm = TRUE),
+#     Sum_Sum_mm = sum(Sum_mm, na.rm = TRUE),
+#     .groups = "drop"
+#   ) %>%
+#   left_join(
+#     filtered_seasonal_data,
+#     by = c("name", "year", "season")
+#   ) %>%
+#   mutate(
+#     Avg_HighTemp = if_else(valid_months_count_HighTemp == 3, Avg_HighTemp, NA_real_),
+#     Avg_AvgTemp = if_else(valid_months_count_AvgTemp == 3, Avg_AvgTemp, NA_real_),
+#     Avg_LowTemp = if_else(valid_months_count_LowTemp == 3, Avg_LowTemp, NA_real_),
+#     Sum_Sum_mm = if_else(valid_months_count_Sum_mm == 3, Sum_Sum_mm, NA_real_)
+#   ) %>%
+#   select(name, year, season, Avg_HighTemp, Avg_AvgTemp, Avg_LowTemp, Sum_Sum_mm) %>%
+#   pivot_wider(
+#     names_from = season,
+#     values_from = c(Avg_HighTemp, Avg_AvgTemp, Avg_LowTemp, Sum_Sum_mm),
+#     names_glue = "{.value}_{season}"
+#   )
+# 
+# seasonal_temp_doy <- points_in_buffer %>%
+#   left_join(seasonal_temp, by = c("Site" = "name", "year" = "year"))
+# 
+# saveRDS(seasonal_temp_doy, "~/phenology-urban/data/proc/nyc/seasonal_doy.rds")
+
+seasonal_temp_doy <- readRDS("~/phenology-urban/data/proc/nyc/seasonal_doy.rds")
+head(seasonal_temp_doy)
+```
+
+## 3 Explore the relationship between temperature and phenology
+
+```{r}
+#| label: plot_function
+#| include: false
+#| warning: false
+
+create_scatter_plot <- function(data, x_var, y_var, title) {
+  # Fit the linear model
+  formula <- as.formula(paste(y_var, "~", x_var))
+  lm_model <- lm(formula, data = data)
+  
+  # Extract slope and p-value
+  slope <- coef(lm_model)[2]
+  p_value <- summary(lm_model)$coefficients[2, 4]
+  
+  # Create scatter plot
+  scatter_plot <- data %>%
+    ggplot(aes(x = .data[[x_var]], y = .data[[y_var]])) +
+    geom_point() +
+    geom_smooth(method = "lm", se = TRUE) +
+    labs(
+      x = x_var,
+      y = y_var,
+      title = paste(title)
+    ) +
+    annotate(
+      "text",
+      x = min(data[[x_var]], na.rm = TRUE),
+      y = max(data[[y_var]], na.rm = TRUE),
+      label = paste0(
+        "Slope: ", round(slope, 2), 
+        "\nP-value: ", signif(p_value, 3)
+      ),
+      hjust = 0,
+      vjust = 1,
+      color = "red"
+    ) +
+    theme_classic()
+  
+  return(scatter_plot)
+}
+```
+
+### 3.1 Seasonal climate variables
+
+I chose the Acer genus, 50% threshold as an example to plot the relationship. Overall, the warmer the winter/spring temperature, the earlier the spring phenology. The precipitation has no significant impact.
+
+```{r}
+#| label: seasonal_spring_scatter
+#| fig-cap: "Relationship between seasonal climate and spring phenology"
+#| fig-subcap: 
+#|   - "Spring average temp."
+#|   - "Spring low temp."
+#|   - "Spring high temp."
+#|   - "Spring prcp. sum"
+#|   - "Winter average temp."
+#|   - "Winter low temp."
+#|   - "Winter high temp."
+#|   - "Winter prcp. sum"
+#| layout-ncol: 4
+#| include: true
+#| warning: false
+
+seasonal_temp_doy <- readRDS("~/phenology-urban/data/proc/nyc/seasonal_doy.rds") %>%
+  mutate(time_length = doy - start) %>%
+  filter(direction =="up" & thres == 0.5 & genus == "Acer")
+
+create_scatter_plot(
+  data = seasonal_temp_doy, 
+  x_var = "Avg_AvgTemp_spring", 
+  y_var = "doy",
+  title = "Relationship between seasonal temperature and spring phenology"
+)
+
+create_scatter_plot(
+  data = seasonal_temp_doy, 
+  x_var = "Avg_LowTemp_spring", 
+  y_var = "doy",
+  title = "Relationship between seasonal temperature and spring phenology"
+)
+create_scatter_plot(
+  data = seasonal_temp_doy, 
+  x_var = "Avg_HighTemp_spring", 
+  y_var = "doy",
+  title = "Relationship between seasonal temperature and spring phenology"
+)
+
+create_scatter_plot(
+  data = seasonal_temp_doy, 
+  x_var = "Sum_Sum_mm_spring", 
+  y_var = "doy",
+  title = "Relationship between seasonal precipitation and spring phenology"
+)
+
+create_scatter_plot(
+  data = seasonal_temp_doy, 
+  x_var = "Avg_AvgTemp_winter", 
+  y_var = "doy",
+  title = "Relationship between seasonal temperature and spring phenology"
+)
+create_scatter_plot(
+  data = seasonal_temp_doy, 
+  x_var = "Avg_LowTemp_winter", 
+  y_var = "doy",
+  title = "Relationship between seasonal temperature and spring phenology"
+)
+
+
+create_scatter_plot(
+  data = seasonal_temp_doy, 
+  x_var = "Avg_HighTemp_winter", 
+  y_var = "doy",
+  title = "Relationship between seasonal temperature and spring phenology"
+)
+
+
+create_scatter_plot(
+  data = seasonal_temp_doy, 
+  x_var = "Sum_Sum_mm_winter", 
+  y_var = "doy",
+  title = "Relationship between seasonal precipitation and spring phenology"
+)
+```
+
+Overall, the warmer the summer temperature, the later the fall phenology. Other relationship are not significant.
+
+```{r}
+#| label: seasonal_fall_scatter
+#| fig-cap: "Relationship between seasonal climate and fall phenology"
+#| fig-subcap: 
+#|   - "Summer average temp."
+#|   - "Summer low temp."
+#|   - "Summer high temp."
+#|   - "Summer prcp. sum"
+#|   - "Fall average temp."
+#|   - "Fall low temp."
+#|   - "Fall high temp."
+#|   - "Fall prcp. sum"
+#| layout-ncol: 4
+#| include: true
+#| warning: false
+
+seasonal_temp_doy <- readRDS("~/phenology-urban/data/proc/nyc/seasonal_doy.rds") %>%
+  mutate(time_length = doy - start) %>%
+  filter(direction =="down" & thres == 0.5 & genus == "Acer")
+
+create_scatter_plot(
+  data = seasonal_temp_doy, 
+  x_var = "Avg_AvgTemp_summer", 
+  y_var = "doy",
+  title = "Relationship between seasonal temperature and fall phenology"
+)
+
+create_scatter_plot(
+  data = seasonal_temp_doy, 
+  x_var = "Avg_LowTemp_summer", 
+  y_var = "doy",
+  title = "Relationship between seasonal temperature and fall phenology"
+)
+
+create_scatter_plot(
+  data = seasonal_temp_doy, 
+  x_var = "Avg_HighTemp_summer", 
+  y_var = "doy",
+  title = "Relationship between seasonal temperature and fall phenology"
+)
+
+
+create_scatter_plot(
+  data = seasonal_temp_doy, 
+  x_var = "Sum_Sum_mm_summer", 
+  y_var = "doy",
+  title = "Relationship between seasonal precipitation and fall phenology"
+)
+create_scatter_plot(
+  data = seasonal_temp_doy, 
+  x_var = "Avg_AvgTemp_fall", 
+  y_var = "doy",
+  title = "Relationship between seasonal temperature and fall phenology"
+)
+
+create_scatter_plot(
+  data = seasonal_temp_doy, 
+  x_var = "Avg_LowTemp_fall", 
+  y_var = "doy",
+  title = "Relationship between seasonal temperature and fall phenology"
+)
+
+create_scatter_plot(
+  data = seasonal_temp_doy, 
+  x_var = "Avg_HighTemp_fall", 
+  y_var = "doy",
+  title = "Relationship between seasonal temperature and fall phenology"
+)
+
+create_scatter_plot(
+  data = seasonal_temp_doy, 
+  x_var = "Sum_Sum_mm_fall", 
+  y_var = "doy",
+  title = "Relationship between seasonal precipitation and fall phenology"
+)
+
+```
+
+In the mixed effect model, I treated the genus as a random effect.
+
+For spring phenology
+
+```{r}
+#| label: seasonal_spring_model
+#| tbl-cap: "Coefficents for model (spring phenology ~ winter climate)"
+
+seasonal_temp_doy <- readRDS("~/phenology-urban/data/proc/nyc/seasonal_doy.rds") %>%
+  mutate(time_length = doy - start) %>%
+  filter(direction =="up" & thres == 0.5)
+
+model <- lmer(doy ~ Avg_AvgTemp_winter  + Sum_Sum_mm_winter  +
+                (1 | genus), 
+              data = seasonal_temp_doy)
+
+fixed_effects <- tidy(model, effects = "fixed")
+
+fixed_effects_table <- fixed_effects %>%
+  select(term, estimate, std.error, statistic) %>%
+  mutate(
+    estimate = round(estimate, 3),
+    std.error = round(std.error, 3),
+    p.value = signif(2 * (1 - pnorm(abs(statistic))), 3)
+  )
+
+kable(fixed_effects_table, format = "markdown", col.names = c("Term", "Estimate", "Std. Error", "t value", "P-Value"))
+```
+
+```{r}
+#| label: seasonal_fall_model
+#| tbl-cap: "Coefficents for model (fall phenology ~ summer climate)"
+#| 
+seasonal_temp_doy <- readRDS("~/phenology-urban/data/proc/nyc/seasonal_doy.rds") %>%
+  mutate(time_length = doy - start) %>%
+  filter(direction =="down" & thres == 0.5)
+
+model <- lmer(doy ~ Avg_AvgTemp_summer  + Sum_Sum_mm_summer  +
+                (1 | genus), 
+              data = seasonal_temp_doy)
+
+fixed_effects <- tidy(model, effects = "fixed")
+
+fixed_effects_table <- fixed_effects %>%
+  select(term, estimate, std.error, statistic) %>%
+  mutate(
+    estimate = round(estimate, 3),
+    std.error = round(std.error, 3),
+    p.value = signif(2 * (1 - pnorm(abs(statistic))), 3)
+  )
+
+kable(fixed_effects_table, format = "markdown", col.names = c("Term", "Estimate", "Std. Error", "t value", "P-Value"))
+```
+
+### 3.2 Event period climate
+
+### 3.2.1 Create period temp/prcp variables
+
+The seasonal climate variables use a fixed pre-season for every trees, not allowing heterogeneity within city. Also, the roughly divided season make it difficult to connect to phenology process, e.g. chilling and forcing accumulation. Therefore, some studies use varing preseason or optimal preseason.
+
+[Meng et al., 2020](https://www.sciencedirect.com/science/article/pii/S0168192319304484?via%3Dihub), [Wang et al., 2021](https://onlinelibrary.wiley.com/doi/10.1111/gcb.15777): The preseason was defined as the period from November 1st in the previous year to the time of `SOS` in the current year. (most fixed)
+
+[Meng et al., 2020](https://www.pnas.org/doi/10.1073/pnas.1911117117#sec-3), [Yin et al., 2024](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2023EF004127): For each city, the period for which the absolute value of the partial correlation coefficient between `SOS` and `Temp` was highest was considered the optimal length of the preseason most relevant to `SOS`. (more flexible, cadidate time: 0 to 6 months prior to SOS, 5-day interval approach from January 1st to the average SOS date)
+
+Most flexible: The period variable is calculated for each site, year, and growing period. The period is defined as the period between the start of the phenology event and the day of year when the tree reaches the event threshold.
+
+![Definition of period](period_var.png)
+
+```{r}
+#| label: create_period_var_1
+#| include: true
+#| warning: false
+
+# growing_temp_doy <- points_in_buffer %>%
+#   mutate(
+#     start_date = make_date(year) + days(start - 1), 
+#     end_date = make_date(year) + days(doy - 1)
+#   ) %>%
+#   rowwise() %>%
+#   mutate(
+#     stats = list({
+#       current_index <- cur_group_id()
+#       if (current_index %% 2000 == 0) {
+#         cat("Processing row:", current_index, "out of", nrow(points_in_buffer), "\n")
+#       }
+#       all_sites_temp %>%
+#         filter(
+#           name == Site,
+#           Date >= start_date & Date <= end_date
+#         ) %>%
+#         summarise(
+#           LowTemp_mean = mean(LowTemp, na.rm = TRUE),
+#           LowTemp_count = sum(!is.na(LowTemp)),
+#           AvgTemp_mean = mean(AvgTemp, na.rm = TRUE),
+#           AvgTemp_count = sum(!is.na(AvgTemp)),
+#           HighTemp_mean = mean(HighTemp, na.rm = TRUE),
+#           HighTemp_count = sum(!is.na(HighTemp)),
+#           Sum_mm_sum = sum(Sum_mm, na.rm = TRUE),
+#           Sum_mm_count = sum(!is.na(Sum_mm))
+#         )
+#     })
+#   ) %>%
+#   unnest(stats)%>%
+#   mutate(
+#     time_length = as.numeric(end_date - start_date, units = "days")
+#   )
+# 
+# saveRDS(growing_temp_doy, "~/phenology-urban/data/proc/nyc/growing_doy.rds")
+
+growing_temp_doy <- readRDS("~/phenology-urban/data/proc/nyc/growing_doy.rds")
+head(growing_temp_doy)
+```
+
+The period_desc is defined as the period between the day of year when the tree reaches the event threshold and the end of phenology event.
+
+```{r}
+#| label: create_period_var_2
+#| include: true
+#| warning: false
+
+
+# growing_temp_doy_desc <- points_in_buffer %>%
+#   mutate(
+#     start_date = make_date(year) + days(doy - 1), 
+#     end_date = make_date(year) + days(end - 1)
+#   ) %>%
+#   rowwise() %>%
+#   mutate(
+#     stats = list({
+#       current_index <- cur_group_id()
+#       if (current_index %% 2000 == 0) {
+#         cat("Processing row:", current_index, "out of", nrow(points_in_buffer), "\n")
+#       }
+#       all_sites_temp %>%
+#         filter(
+#           name == Site,
+#           Date >= start_date & Date <= end_date
+#         ) %>%
+#         summarise(
+#           LowTemp_mean = mean(LowTemp, na.rm = TRUE),
+#           LowTemp_count = sum(!is.na(LowTemp)),
+#           AvgTemp_mean = mean(AvgTemp, na.rm = TRUE),
+#           AvgTemp_count = sum(!is.na(AvgTemp)),
+#           HighTemp_mean = mean(HighTemp, na.rm = TRUE),
+#           HighTemp_count = sum(!is.na(HighTemp)),
+#           Sum_mm_sum = sum(Sum_mm, na.rm = TRUE),
+#           Sum_mm_count = sum(!is.na(Sum_mm))
+#         )
+#     })
+#   ) %>%
+#   unnest(stats)%>%
+#   mutate(
+#     time_length = as.numeric(end_date - start_date, units = "days")
+#   )
+# saveRDS(growing_temp_doy_desc, "~/phenology-urban/data/proc/nyc/growing_doy_desc.rds")
+
+growing_temp_doy_desc <- readRDS("~/phenology-urban/data/proc/nyc/growing_doy_desc.rds")
+head(growing_temp_doy_desc)
+```
+
+#### 3.2.1 The current event period
+
+I tried `period_length` (start of the event to the day when tree reaches the threshold) as well as `day of year`. However, one issue is that a later `doy` or a longer green-up period already corresponds to warmer weather in the current period.
+
+-   [ ] Should I also explore the optimal pre-season (e.g. for each genus) within the city?
+
+```{r}
+#| label: period_spring_scatter
+#| fig-cap: "Relationship between period climate and spring phenology"
+#| fig-subcap: 
+#|   - "doy ~ average temp."
+#|   - "doy ~ low temp."
+#|   - "doy ~ high temp."
+#|   - "doy ~ prcp. sum"
+#|   - "period_length ~ average temp."
+#|   - "period_length ~ low temp."
+#|   - "period_length ~ high temp."
+#|   - "period_length ~ prcp. sum"
+#| layout-ncol: 4
+#| include: true
+#| warning: false
+
+growing_temp_doy <- readRDS("~/phenology-urban/data/proc/nyc/growing_doy.rds") %>%
+  filter(time_length != 0 & direction =="up" & thres == 0.5 & genus == "Acer")
+
+create_scatter_plot(
+  data = growing_temp_doy, 
+  x_var = "AvgTemp_mean", 
+  y_var = "doy",
+  title = "Relationship between period temperature and spring phenology"
+)
+create_scatter_plot(
+  data = growing_temp_doy, 
+  x_var = "LowTemp_mean", 
+  y_var = "doy",
+  title = "Relationship between period temperature and spring phenology"
+)
+create_scatter_plot(
+  data = growing_temp_doy, 
+  x_var = "HighTemp_mean", 
+  y_var = "doy",
+  title = "Relationship between period temperature and spring phenology"
+)
+
+
+
+create_scatter_plot(
+  data = growing_temp_doy, 
+  x_var = "Sum_mm_sum", 
+  y_var = "doy",
+  title = "Relationship between period precipitation and spring phenology"
+)
+
+create_scatter_plot(
+  data = growing_temp_doy, 
+  x_var = "AvgTemp_mean", 
+  y_var = "time_length",
+  title = "Relationship between period temperature and spring phenology"
+)
+
+create_scatter_plot(
+  data = growing_temp_doy, 
+  x_var = "LowTemp_mean", 
+  y_var = "time_length",
+  title = "Relationship between period temperature and spring phenology"
+)
+
+create_scatter_plot(
+  data = growing_temp_doy, 
+  x_var = "HighTemp_mean", 
+  y_var = "time_length",
+  title = "Relationship between period temperature and spring phenology"
+)
+
+create_scatter_plot(
+  data = growing_temp_doy, 
+  x_var = "Sum_mm_sum", 
+  y_var = "time_length",
+  title = "Relationship between period precipitation and spring phenology"
+)
+```
+
+#### 3.2.2 The previous period
+
+The climate condition in the previous period. Temp in dormancy -\> spring phenology. Temp in growing period -\> fall phenology. Compared to current period, the climate of the previous event is not structurally inherently linked to the timing of the subsequent event, and it can help connect to the underlying mechanisms.
+
+```{r}
+#| label: join_data
+#| include: true
+#| warning: false
+
+growing_temp_doy <- readRDS("~/phenology-urban/data/proc/nyc/growing_doy.rds") %>%
+  filter(thres == 0.5) %>%
+  select(id, genus, year, direction, doy, time_length)
+growing_temp_doy_desc <- readRDS("~/phenology-urban/data/proc/nyc/growing_doy_desc.rds") %>%
+  filter(thres == 0.5) %>%
+  select(id, genus, year, direction, LowTemp_mean, LowTemp_count, AvgTemp_mean, AvgTemp_count, HighTemp_mean, HighTemp_count, Sum_mm_sum, Sum_mm_count) %>%
+  mutate(
+   join_year = case_when(
+     direction == "up" ~ year,
+     direction == "down" ~ year + 1
+   ),
+   join_direction = case_when(
+     direction == "up" ~ "down",
+     direction == "down" ~ "up"
+   ) 
+  ) %>%
+  select(-year, -direction)
+
+growing_doy_join <- growing_temp_doy %>%
+  left_join(growing_temp_doy_desc, by = c("id" = "id", "genus" = "genus", "year" = "join_year", "direction" = "join_direction"))
+```
+
+For spring phenology, the warmer the dormancy period, the earlier the spring phenology. The warmer the dormancy period，the slower the green-up pace.
+
+```{r}
+#| label: period_spring_previous
+#| fig-cap: "Relationship between previous period climate and spring phenology"
+#| fig-subcap: 
+#|   - "doy vs. average temp."
+#|   - "doy vs. high temp."
+#|   - "doy vs. low temp."
+#|   - "doy vs. prcp. sum"
+#|   - "period_length vs. average temp."
+#|   - "period_length vs. high temp."
+#|   - "period_length vs. low temp."
+#|   - "period_length vs. prcp. sum"
+#| layout-ncol: 4
+#| include: true
+#| warning: false
+
+growing_doy_spring <- growing_doy_join %>%
+  filter(direction == "up") %>%
+  filter(genus == "Acer")
+
+create_scatter_plot(
+  data = growing_doy_spring, 
+  x_var = "AvgTemp_mean", 
+  y_var = "doy",
+  title = "Relationship between growing temperature and spring phenology"
+)
+
+create_scatter_plot(
+  data = growing_doy_spring, 
+  x_var = "HighTemp_mean", 
+  y_var = "doy",
+  title = "Relationship between growing temperature and spring phenology"
+)
+
+
+create_scatter_plot(
+  data = growing_doy_spring, 
+  x_var = "LowTemp_mean", 
+  y_var = "doy",
+  title = "Relationship between growing temperature and spring phenology"
+)
+
+create_scatter_plot(
+  data = growing_doy_spring, 
+  x_var = "Sum_mm_sum", 
+  y_var = "doy",
+  title = "Relationship between growing precipitation and spring phenology"
+)
+
+create_scatter_plot(
+  data = growing_doy_spring, 
+  x_var = "AvgTemp_mean", 
+  y_var = "time_length",
+  title = "Relationship between growing temperature and spring phenology"
+)
+
+create_scatter_plot(
+  data = growing_doy_spring, 
+  x_var = "HighTemp_mean", 
+  y_var = "time_length",
+  title = "Relationship between growing temperature and spring phenology"
+)
+
+
+create_scatter_plot(
+  data = growing_doy_spring, 
+  x_var = "LowTemp_mean", 
+  y_var = "time_length",
+  title = "Relationship between growing temperature and spring phenology"
+)
+
+create_scatter_plot(
+  data = growing_doy_spring, 
+  x_var = "Sum_mm_sum", 
+  y_var = "time_length",
+  title = "Relationship between growing precipitation and spring phenology"
+)
+```
+
+For fall phenology, the warmer the growing period, the later the fall phenology. The warmer the growing period，the faster the green-down pace.
+
+```{r}
+#| label: period_fall_previous
+#| fig-cap: "Relationship between previous period climate and spring phenology"
+#| fig-subcap: 
+#|   - "doy vs. average temp."
+#|   - "doy vs. high temp."
+#|   - "doy vs. low temp."
+#|   - "doy vs. prcp. sum"
+#|   - "period_length vs. average temp."
+#|   - "period_length vs. high temp."
+#|   - "period_length vs. low temp."
+#|   - "period_length vs. prcp. sum"
+#| layout-ncol: 4
+#| include: true
+#| warning: false
+
+growing_doy_fall <- growing_doy_join %>%
+  filter(direction == "down") %>%
+  filter(genus == "Acer")
+
+create_scatter_plot(
+  data = growing_doy_fall, 
+  x_var = "AvgTemp_mean", 
+  y_var = "doy",
+  title = "Relationship between growing temperature and fall phenology"
+)
+
+create_scatter_plot(
+  data = growing_doy_fall, 
+  x_var = "HighTemp_mean", 
+  y_var = "doy",
+  title = "Relationship between growing temperature and fall phenology"
+)
+
+
+create_scatter_plot(
+  data = growing_doy_fall, 
+  x_var = "LowTemp_mean", 
+  y_var = "doy",
+  title = "Relationship between growing temperature and fall phenology"
+)
+
+create_scatter_plot(
+  data = growing_doy_fall, 
+  x_var = "Sum_mm_sum", 
+  y_var = "doy",
+  title = "Relationship between growing precipitation and fall phenology"
+)
+
+create_scatter_plot(
+  data = growing_doy_fall, 
+  x_var = "AvgTemp_mean", 
+  y_var = "time_length",
+  title = "Relationship between growing temperature and fall phenology"
+)
+
+create_scatter_plot(
+  data = growing_doy_fall, 
+  x_var = "HighTemp_mean", 
+  y_var = "time_length",
+  title = "Relationship between growing temperature and fall phenology"
+)
+
+
+create_scatter_plot(
+  data = growing_doy_fall, 
+  x_var = "LowTemp_mean", 
+  y_var = "time_length",
+  title = "Relationship between growing temperature and fall phenology"
+)
+
+create_scatter_plot(
+  data = growing_doy_fall, 
+  x_var = "Sum_mm_sum", 
+  y_var = "time_length",
+  title = "Relationship between growing precipitation and fall phenology"
+)
+
+```
+
+## 4 Conclusion and next step
+
+Within the city, the relationship between phenology and temperature is still significant.
+
+-   The warmer the preseason temperature, the earlier the spring phenology.
+-   The warmer the preseason temperature, the later the fall phenology.
+-   The warmer the dormancy period，the slower the green-up pace. The warmer the growing period，the faster the green-down pace. (consistent results in lmer model)
+-   The precipitation has no significant impact.
+
+Next steps:
+
+-   [ ] Find the optimal preseason? Related to [process-based model](https://onlinelibrary.wiley.com/doi/full/10.1111/geb.13932)
+-   [ ] Enlarge the samples in NYC.
+-   [ ] Add the urban structure variables.
+-   [ ] Enlarge the city samples (downloading WU in other 6 cities).
+
+Juwon conducted research on the impact of climate change on urban trees, focusing specifically on changes in the start of the growing season in New York. He and Prof. Seto plan to expand this approach across the U.S., and he looks forward to potential collaborations.
