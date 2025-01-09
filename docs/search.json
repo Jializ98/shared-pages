@@ -33,5 +33,26 @@
     "title": "workflow_micro_NYC",
     "section": "4 Conclusion and next step",
     "text": "4 Conclusion and next step\nWithin the city, the relationship between phenology and temperature is still significant.\n\nThe warmer the preseason temperature, the earlier the spring phenology.\nThe warmer the preseason temperature, the later the fall phenology.\nThe warmer the dormancy period，the slower the green-up pace. The warmer the growing period，the faster the green-down pace. (consistent results in lmer model)\nThe precipitation has no significant impact.\n\nNext steps:\n\nFind the optimal preseason? Related to process-based model\nEnlarge the samples in NYC.\nAdd the urban structure variables.\nEnlarge the city samples (downloading WU in other 6 cities).\n\nJuwon conducted research on the impact of climate change on urban trees, focusing specifically on changes in the start of the growing season in New York. He and Prof. Seto plan to expand this approach across the U.S., and he looks forward to potential collaborations."
+  },
+  {
+    "objectID": "test.html",
+    "href": "test.html",
+    "title": "Hello, Quarto",
+    "section": "",
+    "text": "Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see https://quarto.org."
+  },
+  {
+    "objectID": "test.html#meet-quarto",
+    "href": "test.html#meet-quarto",
+    "title": "Hello, Quarto",
+    "section": "",
+    "text": "Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see https://quarto.org."
+  },
+  {
+    "objectID": "test.html#meet-the-penguins",
+    "href": "test.html#meet-the-penguins",
+    "title": "Hello, Quarto",
+    "section": "Meet the penguins",
+    "text": "Meet the penguins\n\nThe penguins data from the palmerpenguins package contains size measurements for 344 penguins from three species observed on three islands in the Palmer Archipelago, Antarctica.\nThe plot below shows the relationship between flipper and bill lengths of these penguins.\n\n\nCode\nggplot(penguins, \n       aes(x = flipper_length_mm, y = bill_length_mm)) +\n  geom_point(aes(color = species, shape = species)) +\n  scale_color_manual(values = c(\"darkorange\",\"purple\",\"cyan4\")) +\n  labs(\n    title = \"Flipper and bill length\",\n    subtitle = \"Dimensions for penguins at Palmer Station LTER\",\n    x = \"Flipper length (mm)\", y = \"Bill length (mm)\",\n    color = \"Penguin species\", shape = \"Penguin species\"\n  ) +\n  theme_minimal()\n\n\n\n\n\n\n\n\n\nAnother code\n\n\nCode\nggplot(penguins, \n       aes(x = flipper_length_mm, y = bill_length_mm)) +\n  geom_point(aes(color = species, shape = species)) +\n  scale_color_manual(values = c(\"yellow3\",\"purple\",\"cyan4\")) +\n  labs(\n    title = \"Flipper and bill length\",\n    subtitle = \"Dimensions for penguins at Palmer Station LTER\",\n    x = \"Flipper length (mm)\", y = \"Bill length (mm)\",\n    color = \"Penguin species\", shape = \"Penguin species\"\n  ) +\n  theme_minimal()"
   }
 ]
