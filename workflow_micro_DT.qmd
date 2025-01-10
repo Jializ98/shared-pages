@@ -1,5 +1,5 @@
 ---
-title: "workflow_micro_NYC"
+title: "workflow_micro_DT"
 author: "Jiali Zhu"
 date: "today"
 format:
@@ -21,8 +21,6 @@ load_packages(c("dplyr","lubridate", "ggplot2", "sf", "readr", "purrr", "stringr
 
 ## 1. Insert tree id base on WU data
 
-For exploratory analysis, I used the street tree in NYC, with the phenology information established by Yiluan. These trees are part of the whole inventory, covering only 14 genera and being sampled. I select the trees which are within 500-m buffer around the weather underground sites.
-
 ```{r}
 #| label: tree_wu_sites
 #| include: true
@@ -31,20 +29,20 @@ For exploratory analysis, I used the street tree in NYC, with the phenology info
 ################ For phenology data ################
 
 metadata <- read_csv("~/lab-data/datasets/vegetation/PS/urban/metadata.csv") %>%
-  filter(site == "NY")
+  filter(site == "DT")
 
-file_list <- list.files(path = "~/lab-data/datasets/vegetation/PS/urban/doy/", pattern = "^doy_NY_.*\\.rds$", full.names = TRUE)
+file_list <- list.files(path = "~/lab-data/datasets/vegetation/PS/urban/doy/", pattern = "^doy_DT_.*\\.rds$", full.names = TRUE)
 data_list <- file_list %>%
   map(~ readRDS(.x))
-ny_now <- bind_rows(data_list)
+DT_now <- bind_rows(data_list)
 
 tree_location <- metadata %>%
   mutate(genus = str_extract(taxa, "^[^ ]+")) %>%
-  left_join(ny_now, by = "id") %>%
+  left_join(DT_now, by = "id") %>%
   filter(!is.na(doy)) %>%
   st_as_sf(coords = c("lon", "lat"), crs = 4326)
 
-wu_location <- read_csv("~/urban-cooling/data/raw/WU/NY/location.csv") %>%
+wu_location <- read_csv("~/urban-cooling/data/raw/WU/DT/location.csv") %>%
   st_as_sf(coords = c("Lon", "Lat"), crs = 4326)
 wu_buffer <- st_buffer(wu_location, dist = 500)
 
@@ -55,9 +53,6 @@ points_in_buffer <- tree_location %>%
   left_join(wu_buffer %>% st_drop_geometry() %>% mutate(buffer_id = row_number()), by = "buffer_id") %>%
   filter(!is.na(buffer_id)) %>%
   select(-buffer_id)
-
-# write_csv(points_in_buffer, "~/phenology-urban/data/proc/nyc/tree_WU_500_buffer_PS.csv")
-# points_in_buffer <- read_csv("data/proc/nyc/tree_WU_500_buffer_PS.csv")
 ```
 
 ```{r}
@@ -66,40 +61,40 @@ points_in_buffer <- tree_location %>%
 #| fig-cap: "Location of WU sites and trees"
 #| warning: false
 
-nyboundary <- st_read("~/urban-cooling/data/raw/NYC/boundary/nybb_dissolved.shp") %>%
-  st_transform(4326)
-
+# nyboundary <- st_read("~/urban-cooling/data/raw/NYC/boundary/nybb_dissolved.shp") %>%
+#   st_transform(4326)
+# 
 ggplot() +
-  geom_sf(data = nyboundary, fill = "grey") +
+  # geom_sf(data = nyboundary, fill = "grey") +
   geom_sf(data = wu_location, color = "blue", size = 1) +
   geom_sf(data = points_in_buffer, color = "red", size = 0.05) +
   theme_minimal()
+
+# write_csv(points_in_buffer,"~/phenology-urban/data/proc/DT/tree_WU_500_buffer_PS.csv")
+points_in_buffer <- read_csv("~/phenology-urban/data/proc/DT/tree_WU_500_buffer_PS.csv")
 ```
 
 ## 2. Creat the climate variable
 
 ### 2.1 Read and clean the WU data (based on GHCNd)
 
-There are 4 raw daily variables selected, i.e. AvgTemp, HighTemp, LowTemp and Precipitation_sum (Sum_mm). I flagged the records which are unknown or questionable according to the methods applied by Global Historical Climatology Network daily [GHCNd](https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-daily).
-
 ```{r}
 #| label: read_wu_data
 #| include: true
 #| warning: false
 
-# source("script/read_clean_WU.R")
-# all_sites_temp <- read_clean_WU(city = "NY", run_checks = TRUE)
-all_sites_temp <- readRDS("~/urban-cooling/data/raw/WU/NY/NY_wu.rds") %>%
+source("~/phenology-urban/script/read_clean_WU.R")
+# all_sites_temp <- read_clean_WU(city = "DT", run_checks = TRUE)
+# saveRDS(all_sites_temp, "~/urban-cooling/data/raw/WU/DT/DT_wu.rds")
+all_sites_temp <- readRDS("~/urban-cooling/data/raw/WU/DT/DT_wu.rds") %>%
   select(c(Date, HighTemp, AvgTemp, LowTemp, Sum_mm, name))
 ```
 
 ### 2.2 Create seasonal temp/prcp variables
 
-The seasonal variable is calculated for each site, year, and season. The season is defined as Winter: December(last year) to February, Spring: March to May, Summer: June to August, Fall: September to November.
-
 ```{r}
 #| label: create_seasonal_var
-#| include: true
+#| include: false
 #| warning: false
 
 # filtered_seasonal_data <- all_sites_temp %>%
@@ -165,10 +160,10 @@ The seasonal variable is calculated for each site, year, and season. The season 
 # 
 # seasonal_temp_doy <- points_in_buffer %>%
 #   left_join(seasonal_temp, by = c("Site" = "name", "year" = "year"))
-# 
-# saveRDS(seasonal_temp_doy, "~/phenology-urban/data/proc/nyc/seasonal_doy.rds")
 
-seasonal_temp_doy <- readRDS("~/phenology-urban/data/proc/nyc/seasonal_doy.rds")
+# saveRDS(seasonal_temp_doy, "~/phenology-urban/data/proc/DT/seasonal_doy.rds")
+
+seasonal_temp_doy <- readRDS("~/phenology-urban/data/proc/DT/seasonal_doy.rds")
 head(seasonal_temp_doy)
 ```
 
@@ -218,8 +213,6 @@ create_scatter_plot <- function(data, x_var, y_var, title) {
 
 ### 3.1 Seasonal climate variables
 
-I chose the Acer genus, 50% threshold as an example to plot the relationship. Overall, the warmer the winter/spring temperature, the earlier the spring phenology. The precipitation has no significant impact.
-
 ```{r}
 #| label: seasonal_spring_scatter
 #| fig-cap: "Relationship between seasonal climate and spring phenology"
@@ -233,10 +226,10 @@ I chose the Acer genus, 50% threshold as an example to plot the relationship. Ov
 #|   - "Winter high temp."
 #|   - "Winter prcp. sum"
 #| layout-ncol: 4
-#| include: true
+#| include: false
 #| warning: false
 
-seasonal_temp_doy <- readRDS("~/phenology-urban/data/proc/nyc/seasonal_doy.rds") %>%
+seasonal_temp_doy <- readRDS("~/phenology-urban/data/proc/DT/seasonal_doy.rds") %>%
   mutate(time_length = doy - start) %>%
   filter(direction =="up" & thres == 0.5 & genus == "Acer")
 
@@ -312,10 +305,10 @@ Overall, the warmer the summer temperature, the later the fall phenology. Other 
 #|   - "Fall high temp."
 #|   - "Fall prcp. sum"
 #| layout-ncol: 4
-#| include: true
+#| include: false
 #| warning: false
 
-seasonal_temp_doy <- readRDS("~/phenology-urban/data/proc/nyc/seasonal_doy.rds") %>%
+seasonal_temp_doy <- readRDS("~/phenology-urban/data/proc/DT/seasonal_doy.rds") %>%
   mutate(time_length = doy - start) %>%
   filter(direction =="down" & thres == 0.5 & genus == "Acer")
 
@@ -385,7 +378,7 @@ For spring phenology
 #| label: seasonal_spring_model
 #| tbl-cap: "Coefficents for model (spring phenology ~ winter climate)"
 
-seasonal_temp_doy <- readRDS("~/phenology-urban/data/proc/nyc/seasonal_doy.rds") %>%
+seasonal_temp_doy <- readRDS("~/phenology-urban/data/proc/DT/seasonal_doy.rds") %>%
   mutate(time_length = doy - start) %>%
   filter(direction =="up" & thres == 0.5)
 
@@ -410,7 +403,7 @@ kable(fixed_effects_table, format = "markdown", col.names = c("Term", "Estimate"
 #| label: seasonal_fall_model
 #| tbl-cap: "Coefficents for model (fall phenology ~ summer climate)"
 #| 
-seasonal_temp_doy <- readRDS("~/phenology-urban/data/proc/nyc/seasonal_doy.rds") %>%
+seasonal_temp_doy <- readRDS("~/phenology-urban/data/proc/DT/seasonal_doy.rds") %>%
   mutate(time_length = doy - start) %>%
   filter(direction =="down" & thres == 0.5)
 
@@ -435,15 +428,15 @@ kable(fixed_effects_table, format = "markdown", col.names = c("Term", "Estimate"
 
 ### 3.2.1 Create period temp/prcp variables
 
-The seasonal climate variables use a fixed pre-season for every trees, not allowing heterogeneity within city. Also, the roughly divided season make it difficult to connect to phenology process, e.g. chilling and forcing accumulation. Therefore, some studies use varing preseason or optimal preseason.
+<!-- The seasonal climate variables use a fixed pre-season for every trees, not allowing heterogeneity within city. Also, the roughly divided season make it difficult to connect to phenology process, e.g. chilling and forcing accumulation. Therefore, some studies use varing preseason or optimal preseason. -->
 
-[Meng et al., 2020](https://www.sciencedirect.com/science/article/pii/S0168192319304484?via%3Dihub), [Wang et al., 2021](https://onlinelibrary.wiley.com/doi/10.1111/gcb.15777): The preseason was defined as the period from November 1st in the previous year to the time of `SOS` in the current year. (most fixed)
+<!-- [Meng et al., 2020](https://www.sciencedirect.com/science/article/pii/S0168192319304484?via%3Dihub), [Wang et al., 2021](https://onlinelibrary.wiley.com/doi/10.1111/gcb.15777): The preseason was defined as the period from November 1st in the previous year to the time of `SOS` in the current year. (most fixed) -->
 
-[Meng et al., 2020](https://www.pnas.org/doi/10.1073/pnas.1911117117#sec-3), [Yin et al., 2024](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2023EF004127): For each city, the period for which the absolute value of the partial correlation coefficient between `SOS` and `Temp` was highest was considered the optimal length of the preseason most relevant to `SOS`. (more flexible, cadidate time: 0 to 6 months prior to SOS, 5-day interval approach from January 1st to the average SOS date)
+<!-- [Meng et al., 2020](https://www.pnas.org/doi/10.1073/pnas.1911117117#sec-3), [Yin et al., 2024](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2023EF004127): For each city, the period for which the absolute value of the partial correlation coefficient between `SOS` and `Temp` was highest was considered the optimal length of the preseason most relevant to `SOS`. (more flexible, cadidate time: 0 to 6 months prior to SOS, 5-day interval approach from January 1st to the average SOS date) -->
 
-Most flexible: The period variable is calculated for each site, year, and growing period. The period is defined as the period between the start of the phenology event and the day of year when the tree reaches the event threshold.
+<!-- Most flexible: The period variable is calculated for each site, year, and growing period. The period is defined as the period between the start of the phenology event and the day of year when the tree reaches the event threshold. -->
 
-![Definition of period](period_var.png)
+<!-- ![Definition of period](period_var.png) -->
 
 ```{r}
 #| label: create_period_var_1
@@ -452,7 +445,7 @@ Most flexible: The period variable is calculated for each site, year, and growin
 
 # growing_temp_doy <- points_in_buffer %>%
 #   mutate(
-#     start_date = make_date(year) + days(start - 1), 
+#     start_date = make_date(year) + days(start - 1),
 #     end_date = make_date(year) + days(doy - 1)
 #   ) %>%
 #   rowwise() %>%
@@ -483,24 +476,21 @@ Most flexible: The period variable is calculated for each site, year, and growin
 #   mutate(
 #     time_length = as.numeric(end_date - start_date, units = "days")
 #   )
-# 
-# saveRDS(growing_temp_doy, "~/phenology-urban/data/proc/nyc/growing_doy.rds")
 
-growing_temp_doy <- readRDS("~/phenology-urban/data/proc/nyc/growing_doy.rds")
+# saveRDS(growing_temp_doy, "~/phenology-urban/data/proc/DT/growing_doy.rds")
+
+growing_temp_doy <- readRDS("~/phenology-urban/data/proc/DT/growing_doy.rds")
 head(growing_temp_doy)
 ```
 
-The period_desc is defined as the period between the day of year when the tree reaches the event threshold and the end of phenology event.
-
 ```{r}
 #| label: create_period_var_2
-#| include: true
+#| include: false
 #| warning: false
-
 
 # growing_temp_doy_desc <- points_in_buffer %>%
 #   mutate(
-#     start_date = make_date(year) + days(doy - 1), 
+#     start_date = make_date(year) + days(doy - 1),
 #     end_date = make_date(year) + days(end - 1)
 #   ) %>%
 #   rowwise() %>%
@@ -531,17 +521,17 @@ The period_desc is defined as the period between the day of year when the tree r
 #   mutate(
 #     time_length = as.numeric(end_date - start_date, units = "days")
 #   )
-# saveRDS(growing_temp_doy_desc, "~/phenology-urban/data/proc/nyc/growing_doy_desc.rds")
+# saveRDS(growing_temp_doy_desc, "~/phenology-urban/data/proc/DT/growing_doy_desc.rds")
 
-growing_temp_doy_desc <- readRDS("~/phenology-urban/data/proc/nyc/growing_doy_desc.rds")
+growing_temp_doy_desc <- readRDS("~/phenology-urban/data/proc/DT/growing_doy_desc.rds")
 head(growing_temp_doy_desc)
 ```
 
 #### 3.2.1 The current event period
 
-I tried `period_length` (start of the event to the day when tree reaches the threshold) as well as `day of year`. However, one issue is that a later `doy` or a longer green-up period already corresponds to warmer weather in the current period.
+<!-- I tried `period_length` (start of the event to the day when tree reaches the threshold) as well as `day of year`. However, one issue is that a later `doy` or a longer green-up period already corresponds to warmer weather in the current period. -->
 
--   [ ] Should I also explore the optimal pre-season (e.g. for each genus) within the city?
+<!-- -   [ ] Should I also explore the optimal pre-season (e.g. for each genus) within the city? -->
 
 ```{r}
 #| label: period_spring_scatter
@@ -556,10 +546,10 @@ I tried `period_length` (start of the event to the day when tree reaches the thr
 #|   - "period_length ~ high temp."
 #|   - "period_length ~ prcp. sum"
 #| layout-ncol: 4
-#| include: true
+#| include: false
 #| warning: false
 
-growing_temp_doy <- readRDS("~/phenology-urban/data/proc/nyc/growing_doy.rds") %>%
+growing_temp_doy <- readRDS("~/phenology-urban/data/proc/DT/growing_doy.rds") %>%
   filter(time_length != 0 & direction =="up" & thres == 0.5 & genus == "Acer")
 
 create_scatter_plot(
@@ -619,19 +609,62 @@ create_scatter_plot(
 )
 ```
 
+```{r}
+#| label: period_spring_model
+#| tbl-cap: "Coefficents for model (spring phenology ~ current period climate)"
+
+growing_temp_doy <- readRDS("~/phenology-urban/data/proc/DT/growing_doy.rds") %>%
+  filter(time_length != 0 & direction =="up" & thres == 0.5)
+
+model1 <- lmer(doy ~ AvgTemp_mean  + Sum_mm_sum  +
+                (1 | genus), 
+              data = growing_temp_doy)
+
+fixed_effects1 <- tidy(model1, effects = "fixed")
+
+fixed_effects_table1 <- fixed_effects1 %>%
+  select(term, estimate, std.error, statistic) %>%
+  mutate(
+    y_variable = "doy",
+    estimate = round(estimate, 3),
+    std.error = round(std.error, 3),
+    p.value = signif(2 * (1 - pnorm(abs(statistic))), 3)
+  )
+
+model2 <- lmer(time_length ~ AvgTemp_mean  + Sum_mm_sum  +
+                (1 | genus), 
+              data = growing_temp_doy)
+
+fixed_effects2 <- tidy(model2, effects = "fixed")
+
+fixed_effects_table2 <- fixed_effects2 %>%
+  select(term, estimate, std.error, statistic) %>%
+  mutate(
+    y_variable = "time_length",
+    estimate = round(estimate, 3),
+    std.error = round(std.error, 3),
+    p.value = signif(2 * (1 - pnorm(abs(statistic))), 3)
+  )
+
+fixed_effects_table <- rbind(fixed_effects_table1, fixed_effects_table2) %>%
+  select(y_variable, everything())
+
+kable(fixed_effects_table, format = "markdown", col.names = c("Dependent variable", "Term", "Estimate", "Std. Error", "t value", "P-Value"))
+```
+
 #### 3.2.2 The previous period
 
-The climate condition in the previous period. Temp in dormancy -\> spring phenology. Temp in growing period -\> fall phenology. Compared to current period, the climate of the previous event is not structurally inherently linked to the timing of the subsequent event, and it can help connect to the underlying mechanisms.
+<!-- The climate condition in the previous period. Temp in dormancy -\> spring phenology. Temp in growing period -\> fall phenology. Compared to current period, the climate of the previous event is not structurally inherently linked to the timing of the subsequent event, and it can help connect to the underlying mechanisms. -->
 
 ```{r}
 #| label: join_data
-#| include: true
+#| include: false
 #| warning: false
 
-growing_temp_doy <- readRDS("~/phenology-urban/data/proc/nyc/growing_doy.rds") %>%
+growing_temp_doy <- readRDS("~/phenology-urban/data/proc/DT/growing_doy.rds") %>%
   filter(thres == 0.5) %>%
   select(id, genus, year, direction, doy, time_length)
-growing_temp_doy_desc <- readRDS("~/phenology-urban/data/proc/nyc/growing_doy_desc.rds") %>%
+growing_temp_doy_desc <- readRDS("~/phenology-urban/data/proc/DT/growing_doy_desc.rds") %>%
   filter(thres == 0.5) %>%
   select(id, genus, year, direction, LowTemp_mean, LowTemp_count, AvgTemp_mean, AvgTemp_count, HighTemp_mean, HighTemp_count, Sum_mm_sum, Sum_mm_count) %>%
   mutate(
@@ -653,6 +686,49 @@ growing_doy_join <- growing_temp_doy %>%
 For spring phenology, the warmer the dormancy period, the earlier the spring phenology. The warmer the dormancy period，the slower the green-up pace.
 
 ```{r}
+#| label: period_p_spring_model
+#| tbl-cap: "Coefficents for model (spring phenology ~ pervious period climate)"
+
+growing_temp_doy <- growing_doy_join %>%
+  filter(direction == "up")
+
+model1 <- lmer(doy ~ AvgTemp_mean  + Sum_mm_sum  +
+                (1 | genus), 
+              data = growing_temp_doy)
+
+fixed_effects1 <- tidy(model1, effects = "fixed")
+
+fixed_effects_table1 <- fixed_effects1 %>%
+  select(term, estimate, std.error, statistic) %>%
+  mutate(
+    y_variable = "doy",
+    estimate = round(estimate, 3),
+    std.error = round(std.error, 3),
+    p.value = signif(2 * (1 - pnorm(abs(statistic))), 3)
+  )
+
+model2 <- lmer(time_length ~ AvgTemp_mean  + Sum_mm_sum  +
+                (1 | genus), 
+              data = growing_temp_doy)
+
+fixed_effects2 <- tidy(model2, effects = "fixed")
+
+fixed_effects_table2 <- fixed_effects2 %>%
+  select(term, estimate, std.error, statistic) %>%
+  mutate(
+    y_variable = "time_length",
+    estimate = round(estimate, 3),
+    std.error = round(std.error, 3),
+    p.value = signif(2 * (1 - pnorm(abs(statistic))), 3)
+  )
+
+fixed_effects_table <- rbind(fixed_effects_table1, fixed_effects_table2) %>%
+  select(y_variable, everything())
+
+kable(fixed_effects_table, format = "markdown", col.names = c("Dependent variable", "Term", "Estimate", "Std. Error", "t value", "P-Value"))
+```
+
+```{r}
 #| label: period_spring_previous
 #| fig-cap: "Relationship between previous period climate and spring phenology"
 #| fig-subcap: 
@@ -665,7 +741,7 @@ For spring phenology, the warmer the dormancy period, the earlier the spring phe
 #|   - "period_length vs. low temp."
 #|   - "period_length vs. prcp. sum"
 #| layout-ncol: 4
-#| include: true
+#| include: false
 #| warning: false
 
 growing_doy_spring <- growing_doy_join %>%
@@ -731,12 +807,14 @@ create_scatter_plot(
 )
 ```
 
+For fall phenology, the warmer the growing period, the later the fall phenology. The warmer the growing period，the faster the green-down pace.
+
 ```{r}
-#| label: period_p_spring_model
-#| tbl-cap: "Coefficents for model (spring phenology ~ pervious period climate)"
+#| label: period_p_fall_model
+#| tbl-cap: "Coefficents for model (fall phenology ~ pervious period climate)"
 
 growing_temp_doy <- growing_doy_join %>%
-  filter(direction == "up")
+  filter(direction == "down")
 
 model1 <- lmer(doy ~ AvgTemp_mean  + Sum_mm_sum  +
                 (1 | genus), 
@@ -774,8 +852,6 @@ fixed_effects_table <- rbind(fixed_effects_table1, fixed_effects_table2) %>%
 kable(fixed_effects_table, format = "markdown", col.names = c("Dependent variable", "Term", "Estimate", "Std. Error", "t value", "P-Value"))
 ```
 
-For fall phenology, the warmer the growing period, the later the fall phenology. The warmer the growing period，the faster the green-down pace.
-
 ```{r}
 #| label: period_fall_previous
 #| fig-cap: "Relationship between previous period climate and spring phenology"
@@ -789,7 +865,7 @@ For fall phenology, the warmer the growing period, the later the fall phenology.
 #|   - "period_length vs. low temp."
 #|   - "period_length vs. prcp. sum"
 #| layout-ncol: 4
-#| include: true
+#| include: false
 #| warning: false
 
 growing_doy_fall <- growing_doy_join %>%
@@ -854,49 +930,6 @@ create_scatter_plot(
   title = "Relationship between growing precipitation and fall phenology"
 )
 
-```
-
-```{r}
-#| label: period_p_fall_model
-#| tbl-cap: "Coefficents for model (fall phenology ~ pervious period climate)"
-
-growing_temp_doy <- growing_doy_join %>%
-  filter(direction == "down")
-
-model1 <- lmer(doy ~ AvgTemp_mean  + Sum_mm_sum  +
-                (1 | genus), 
-              data = growing_temp_doy)
-
-fixed_effects1 <- tidy(model1, effects = "fixed")
-
-fixed_effects_table1 <- fixed_effects1 %>%
-  select(term, estimate, std.error, statistic) %>%
-  mutate(
-    y_variable = "doy",
-    estimate = round(estimate, 3),
-    std.error = round(std.error, 3),
-    p.value = signif(2 * (1 - pnorm(abs(statistic))), 3)
-  )
-
-model2 <- lmer(time_length ~ AvgTemp_mean  + Sum_mm_sum  +
-                (1 | genus), 
-              data = growing_temp_doy)
-
-fixed_effects2 <- tidy(model2, effects = "fixed")
-
-fixed_effects_table2 <- fixed_effects2 %>%
-  select(term, estimate, std.error, statistic) %>%
-  mutate(
-    y_variable = "time_length",
-    estimate = round(estimate, 3),
-    std.error = round(std.error, 3),
-    p.value = signif(2 * (1 - pnorm(abs(statistic))), 3)
-  )
-
-fixed_effects_table <- rbind(fixed_effects_table1, fixed_effects_table2) %>%
-  select(y_variable, everything())
-
-kable(fixed_effects_table, format = "markdown", col.names = c("Dependent variable", "Term", "Estimate", "Std. Error", "t value", "P-Value"))
 ```
 
 ## 4 Conclusion and next step
