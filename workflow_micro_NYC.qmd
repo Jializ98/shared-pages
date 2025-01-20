@@ -16,7 +16,7 @@ editor: visual
 #| warning: false
 
 library(zhulabtools)
-load_packages(c("dplyr","lubridate", "ggplot2", "sf","sp", "readr", "purrr", "stringr","glue", "tidyr", "broom","lme4", "knitr", "broom.mixed", "ppcor", "spdep", "spatialreg", "lmtest","car", "spBayes", "coda", "patchwork", "performance"))
+load_packages(c("dplyr","lubridate", "ggplot2", "sf","sp", "readr", "purrr", "stringr","glue", "tidyr", "broom","lme4", "knitr", "broom.mixed", "ppcor", "spdep", "spatialreg", "lmtest","car", "spBayes", "coda", "patchwork", "performance", "terra", "ggpmisc", "gstat", "ggmcmc"))
 # source("~/phenology-urban/script/read_clean_WU.R")
 select <- dplyr::select
 ```
@@ -34,17 +34,19 @@ For exploratory analysis, I used the street tree in NYC, with the phenology info
 
 ################ For phenology data ################
 
+city = "NY"
 metadata <- read_csv("~/lab-data/datasets/vegetation/PS/urban/metadata.csv") %>%
-  filter(site == "NY")
+  filter(site == !!city)
 
-file_list <- list.files(path = "~/lab-data/datasets/vegetation/PS/urban/doy/", pattern = "^doy_NY_.*\\.rds$", full.names = TRUE)
+file_list <- list.files(path = "~/lab-data/datasets/vegetation/PS/urban/doy", pattern = paste0("^doy_",city,"_.*\\.rds$"), full.names = TRUE)
+
 data_list <- file_list %>%
   map(~ readRDS(.x))
-ny_now <- bind_rows(data_list)
+all_doy <- bind_rows(data_list)
 
 tree_location <- metadata %>%
   mutate(genus = str_extract(taxa, "^[^ ]+")) %>%
-  left_join(ny_now, by = "id") %>%
+  left_join(all_doy, by = "id") %>%
   filter(!is.na(doy))
 
 just_tree_location <- tree_location %>%
@@ -53,7 +55,7 @@ just_tree_location <- tree_location %>%
   ungroup() %>%
   st_as_sf(coords = c("lon", "lat"), crs = 4326)
 
-wu_location <- read_csv("~/urban-cooling/data/raw/WU/NY/location.csv", show_col_types = FALSE) %>%
+wu_location <- read_csv(paste0("~/urban-cooling/data/raw/WU/", city, "/location.csv"), show_col_types = FALSE) %>%
   st_as_sf(coords = c("Lon", "Lat"), crs = 4326)
 wu_buffer <- st_buffer(wu_location, dist = 500)
 
@@ -87,7 +89,7 @@ points_in_buffer <- tree_location %>%
   left_join(id_buffer, by = "id") %>%
   filter(!is.na(Site))
 
-# write_csv(points_in_buffer, "~/phenology-urban/data/proc/urban/NY/tree_WU_500_buffer_PS.csv")
+# write_csv(points_in_buffer, paste0("~/phenology-urban/data/proc/urban/", city, "/tree_WU_500_buffer_PS.csv"))
 points_in_buffer <- read_csv("~/phenology-urban/data/proc/urban/NY/tree_WU_500_buffer_PS.csv", show_col_types = FALSE)
 
 ```
@@ -100,7 +102,7 @@ points_in_buffer <- read_csv("~/phenology-urban/data/proc/urban/NY/tree_WU_500_b
 
 points_in_buffer_sf <- points_in_buffer %>%
   st_as_sf(coords = c("lon", "lat"), crs = 4326)
-boundary <- st_read("~/urban-cooling/data/raw/NYC/boundary/nybb_dissolved.shp") %>%
+boundary <- st_read("~/urban-cooling/data/raw/WU/NY/Untitled/nybb_dissolved.shp") %>%
   st_transform(4326)
 
 ggplot() +
@@ -120,7 +122,7 @@ There are 4 raw daily variables selected, i.e. AvgTemp, HighTemp, LowTemp and Pr
 #| include: true
 #| warning: false
 
-# all_sites_temp <- read_clean_WU(city = "NY", run_checks = TRUE)
+# all_sites_temp <- read_clean_WU(city = "ST", run_checks = TRUE)
 all_sites_temp <- readRDS("~/urban-cooling/data/raw/WU/NY/NY_wu.rds") %>%
   dplyr::select(c(Date, HighTemp, AvgTemp, LowTemp, Sum_mm, name))
 ```
@@ -131,6 +133,8 @@ all_sites_temp <- readRDS("~/urban-cooling/data/raw/WU/NY/NY_wu.rds") %>%
 #| label: plot_function
 #| include: true
 #| warning: false
+
+# download
 srad_daily <- readRDS("~/phenology-urban/data/raw/NY/Daymet/daily2016-2024/srad_daily_2016-2023.rds")
 ```
 
@@ -146,18 +150,19 @@ Here, based on the variable (phenology metric: `SOS`, `EOS`, `green-up pace`, `g
 
 ```{r}
 #| label: optimal_preseason_fun
+#| eval: false
 #| include: true
 #| warning: false
 
-calculate_partial_correlation <- function(insert_data, direction, thres, genus, priors, 
+calculate_partial_correlation <- function(insert_data, direction, thres, genus, pre_lengths, 
                                           phe_variable, temp_variable) {
   subset_tree_pcor <- insert_data %>%
     filter(direction == !!direction & thres == !!thres & genus == !!genus)
-  results <- lapply(priors, function(prior) {
-    cat("Prior:", prior, "\n")
+  results <- lapply(pre_lengths, function(pre_length) {
+    cat("Preseason length (days):", pre_length, "\n")
     preseason_var <- subset_tree_pcor %>%
       mutate(
-        start_date = make_date(year) + days(round(mean(doy)) - 1) - days(prior),
+        start_date = make_date(year) + days(round(mean(doy)) - 1) - days(pre_length),
         end_date = make_date(year) + days(round(mean(doy)) - 1)
       )
 
@@ -227,9 +232,9 @@ calculate_partial_correlation <- function(insert_data, direction, thres, genus, 
   max_idx <- which.max(abs(correlations))
   
   return(list(
-    optimal_prior = priors[max_idx],
-    prior_candidate  = priors,
-    prior_trend = correlations,
+    optimal_pre_length = pre_lengths[max_idx],
+    pre_length_candidate  = pre_lengths,
+    pre_length_trend = correlations,
     pvalue_trend = pvalues,
     partial_correlation = results[[max_idx]]$correlation,
     partial_corr_pvalue = results[[max_idx]]$pvalue,
@@ -238,7 +243,7 @@ calculate_partial_correlation <- function(insert_data, direction, thres, genus, 
 }
 
 
-priors <- seq(5, 180, by = 5)
+pre_lengths <- seq(5, 180, by = 5)
 all_genus <- unique(points_in_buffer$genus)
 temp_variable = "AvgTemp_mean"
 ```
@@ -269,7 +274,7 @@ all_results <- lapply(all_genus, function(genus) {
     direction = direction,
     thres = thres,
     genus = genus,
-    priors = priors,
+    pre_lengths = pre_lengths,
     phe_variable = phe_variable,
     temp_variable = temp_variable
   )
@@ -280,11 +285,11 @@ spring_date_preseason_var <- do.call(rbind, lapply(all_results, function(x) x$pr
 spring_date_combined_results <- lapply(all_results, function(x) {
   list(
     genus = unique(x$preseason_var$genus),
-    optimal_prior = x$optimal_prior,
+    optimal_pre_length = x$optimal_pre_length,
     partial_correlation = x$partial_correlation,
     partial_corr_pvalue = x$partial_corr_pvalue,
-    prior_candidate = x$prior_candidate,
-    prior_trend = x$prior_trend,
+    pre_length_candidate = x$pre_length_candidate,
+    pre_length_trend = x$pre_length_trend,
     pvalue_trend = x$pvalue_trend
   )
 })
@@ -315,7 +320,6 @@ points_with_diff <- points_in_buffer %>%
 direction <- "up"
 thres <- 0.2              # change to 0.5?
 phe_variable = "doy_diff"
-temp_variable = "HighTemp_mean"
 insert_data = points_with_diff
 
 all_results <- list()
@@ -326,7 +330,7 @@ all_results <- lapply(all_genus, function(genus) {
     direction = direction,
     thres = thres,
     genus = genus,
-    priors = priors,
+    pre_lengths = pre_lengths,
     phe_variable = phe_variable,
     temp_variable = temp_variable
   )
@@ -337,11 +341,11 @@ spring_pace_preseason_var <- do.call(rbind, lapply(all_results, function(x) x$pr
 spring_pace_combined_results <- lapply(all_results, function(x) {
   list(
     genus = unique(x$preseason_var$genus),
-    optimal_prior = x$optimal_prior,
+    optimal_pre_length = x$optimal_pre_length,
     partial_correlation = x$partial_correlation,
     partial_corr_pvalue = x$partial_corr_pvalue,
-    prior_candidate = x$prior_candidate,
-    prior_trend = x$prior_trend,
+    pre_length_candidate = x$pre_length_candidate,
+    pre_length_trend = x$pre_length_trend,
     pvalue_trend = x$pvalue_trend
   )
 })
@@ -365,7 +369,6 @@ Defined as the day of year when individual tree growing season EVI curves first 
 direction <- "down"
 thres <- 0.5
 phe_variable = "doy"
-temp_variable = "HighTemp_mean"
 insert_data = points_in_buffer
 
 all_results <- list()
@@ -377,7 +380,7 @@ all_results <- lapply(all_genus, function(genus) {
     direction = direction,
     thres = thres,
     genus = genus,
-    priors = priors,
+    pre_lengths = pre_lengths,
     phe_variable = phe_variable,
     temp_variable = temp_variable
   )
@@ -388,11 +391,11 @@ fall_date_preseason_var <- do.call(rbind, lapply(all_results, function(x) x$pres
 fall_date_combined_results <- lapply(all_results, function(x) {
   list(
     genus = unique(x$preseason_var$genus),
-    optimal_prior = x$optimal_prior,
+    optimal_pre_length = x$optimal_pre_length,
     partial_correlation = x$partial_correlation,
     partial_corr_pvalue = x$partial_corr_pvalue,
-    prior_candidate = x$prior_candidate,
-    prior_trend = x$prior_trend,
+    pre_length_candidate = x$pre_length_candidate,
+    pre_length_trend = x$pre_length_trend,
     pvalue_trend = x$pvalue_trend
   )
 })
@@ -408,9 +411,8 @@ Defined as the time span (in days) required for the individual tree growing seas
 #| eval: FALSE
 #| include: TRUE
 direction <- "down"
-thres <- 0.2              # change to 0.5?
+thres <- 0.2
 phe_variable = "doy_diff"
-temp_variable = "HighTemp_mean"
 insert_data = points_with_diff
 
 all_results <- list()
@@ -422,7 +424,7 @@ all_results <- lapply(all_genus, function(genus) {
     direction = direction,
     thres = thres,
     genus = genus,
-    priors = priors,
+    pre_lengths = pre_lengths,
     phe_variable = phe_variable,
     temp_variable = temp_variable
   )
@@ -433,11 +435,11 @@ fall_pace_preseason_var <- do.call(rbind, lapply(all_results, function(x) x$pres
 fall_pace_combined_results <- lapply(all_results, function(x) {
   list(
     genus = unique(x$preseason_var$genus),
-    optimal_prior = x$optimal_prior,
+    optimal_pre_length = x$optimal_pre_length,
     partial_correlation = x$partial_correlation,
     partial_corr_pvalue = x$partial_corr_pvalue,
-    prior_candidate = x$prior_candidate,
-    prior_trend = x$prior_trend,
+    pre_length_candidate = x$pre_length_candidate,
+    pre_length_trend = x$pre_length_trend,
     pvalue_trend = x$pvalue_trend
   )
 })
@@ -506,13 +508,13 @@ As for `EOS`, most genera (except Populus, Platanus) have positive partial corre
 #| warning: false
 
 tavg_allyear_pcorr <- readRDS("~/phenology-urban/data/proc/urban/NY/tavg_allyear_pcorr.rds") %>%
-  select(genus, optimal_prior, partial_correlation, partial_corr_pvalue, type) %>%
-  group_by(genus, optimal_prior, partial_correlation, partial_corr_pvalue, type) %>%
+  select(genus, optimal_pre_length, partial_correlation, partial_corr_pvalue, type) %>%
+  group_by(genus, optimal_pre_length, partial_correlation, partial_corr_pvalue, type) %>%
   slice(1) %>%
   ungroup() %>%
   pivot_wider(
     names_from = type,
-    values_from = c(optimal_prior, partial_correlation, partial_corr_pvalue)
+    values_from = c(optimal_pre_length, partial_correlation, partial_corr_pvalue)
   ) %>%
   mutate(
     group_spring = case_when(
@@ -552,7 +554,7 @@ spring_pcorr_p <- ggplot(tavg_allyear_pcorr, aes(x = partial_correlation_SOS, y 
   theme_minimal()  +
   theme(legend.position = "bottom")
 
-spring_prior_p <- ggplot(tavg_allyear_pcorr, aes(x = optimal_prior_SOS, y = `optimal_prior_green-up pace`, color = group_spring, label = genus)) +
+spring_pre_length_p <- ggplot(tavg_allyear_pcorr, aes(x = optimal_pre_length_SOS, y = `optimal_pre_length_green-up pace`, color = group_spring, label = genus)) +
   geom_point(size = 3) +
   geom_text(vjust = -0.6, hjust = 0.5) +
   geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
@@ -598,7 +600,7 @@ fall_pcorr_p <- ggplot(tavg_allyear_pcorr, aes(x = partial_correlation_EOS, y = 
   theme_minimal()  +
   theme(legend.position = "bottom")
 
-fall_prior_p <- ggplot(tavg_allyear_pcorr, aes(x = optimal_prior_EOS, y = `optimal_prior_green-down pace`, color = group_fall, label = genus)) +
+fall_pre_length_p <- ggplot(tavg_allyear_pcorr, aes(x = optimal_pre_length_EOS, y = `optimal_pre_length_green-down pace`, color = group_fall, label = genus)) +
   geom_point(size = 3) +
   geom_text(vjust = -0.6, hjust = 0.5) +
   geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
@@ -621,8 +623,8 @@ fall_prior_p <- ggplot(tavg_allyear_pcorr, aes(x = optimal_prior_EOS, y = `optim
   theme_minimal() +
   theme(legend.position = "bottom")
 
-spring_pcorr_p + spring_prior_p + plot_layout(guides = "collect") & theme(legend.position = "bottom")
-fall_pcorr_p + fall_prior_p + plot_layout(guides = "collect") & theme(legend.position = "bottom")
+spring_pcorr_p + spring_pre_length_p + plot_layout(guides = "collect") & theme(legend.position = "bottom")
+fall_pcorr_p + fall_pre_length_p + plot_layout(guides = "collect") & theme(legend.position = "bottom")
 ```
 
 ## 3 Spatial pattern (SOS \~ T~avg~)
@@ -634,475 +636,139 @@ Both fixed-effect model and mixed-effects model have heterogeneous residuals. `G
 ```{r}
 #| label: check_sp_auto
 #| include: true
+#| warning: false
 
 tavg_allyear_var <- readRDS("~/phenology-urban/data/proc/urban/NY/tavg_allyear_var.rds")
-tavg_SOS <- tavg_allyear_var %>% filter(direction == "up" & thres == 0.5) %>%
-  na.omit()
-
-regOLS <- lm(doy~ AvgTemp_mean + Sum_mm_sum + srad_mean + genus, data = tavg_SOS)
-mixed_OLS <- lmer(doy~ AvgTemp_mean + Sum_mm_sum + srad_mean +
-                    (1|genus), data = tavg_SOS)
-print(check_heteroscedasticity(mixed_OLS))
-
-
-coordinates(tavg_SOS) <- ~ lon + lat
-knea <- dnearneigh(coordinates(tavg_SOS), 0.0001, 1, longlat = TRUE)
-nqR <- nb2listw(knea, style = "W")
-
-lm.morantest(regOLS, nqR, alternative="two.sided")
-summary(lm.RStests(regOLS,nqR,test="all"))
+genera <- unique(tavg_allyear_var$genus)
+variogram_results <- list()
+for (i in 1:14) {
+  genus = genera[i]
+  tavg_SOS <- tavg_allyear_var %>%
+    filter(direction == "up" & thres == 0.5 & genus == !!genus) %>%
+    na.omit()
+  random_OLS <- lmer(doy ~ AvgTemp_mean + Sum_mm_sum + srad_mean + (1|year), data = tavg_SOS)
+  print(check_heteroscedasticity(random_OLS))
+  tavg_SOS$residual_random <- tavg_SOS$doy - fitted(random_OLS)
+  
+  coordinates(tavg_SOS) <- ~ lon + lat
+  vgm.emt <- variogram(residual_random ~ 1, tavg_SOS, cloud = FALSE)
+  vgm.las.init <- vgm(model = c("Exp", "Sph", "Gau", "Mat"))
+  vgm_exn_fit <- fit.variogram(vgm.emt, vgm.las.init)
+  variogram_results[[i]] <- data.frame(
+    genus = genus,
+    model = vgm_exn_fit$model,
+    psill = vgm_exn_fit$psill,
+    range = vgm_exn_fit$range
+  )
+}
+variogram_summary <- do.call(rbind, variogram_results)
+kable(variogram_summary, caption = "Fitted semivariogram model for each genus")
 ```
 
 ### 3.2 Spatial statistical model using *spBayes*
 
-We modeled the relationship between the day of year ($\text{DOY}$) and environmental covariates using a spatial hierarchical model. The response variable at location $\mathbf{s}_i$, denoted as $y(\mathbf{s}_i)$, was modeled as follows:
+We modeled the relationship between the day of year ((\text{DOY})) and environmental covariates using a spatial hierarchical model. The response variable at location (\mathbf{s}\_i), denoted as (y(\mathbf{s}\_i)), was modeled as follows:
 
-$$ y(\mathbf{s}_i) = \mu(\mathbf{s}_i) + w(\mathbf{s}_i) + \epsilon(\mathbf{s}_i) $$
+$$y(\mathbf{s}_i) = \mu(\mathbf{s}_i) + w(\mathbf{s}_i) + u_{\text{year}(i)} + \epsilon(\mathbf{s}_i)$$
 
 where:
 
--   $\mu(\mathbf{s}_i) = \mathbf{X}_i \boldsymbol{\beta}$ represents the fixed effects, with $\mathbf{X}_i = [1, \text{AvgTemp}, \text{Precp}, \text{srad}]$ being the design matrix of predictors, and $\boldsymbol{\beta} = [\beta_0, \beta_1, \beta_2, \beta_3]$ representing the regression coefficients.
+-   **Fixed Effects**: $$\mu(\mathbf{s}_i) = \mathbf{X}_i \boldsymbol{\beta}$$
 
--   $w(\mathbf{s}_i) \sim \text{MVN}(0, \mathbf{R}\sigma^2)$ represents the spatially correlated random effect, with $\mathbf{R}$ being the spatial correlation matrix constructed using an exponential covariance function: $$\mathbf{R}_{ij} = \text{exp}(-\phi \cdot D_{ij})$$ where $D_{ij}$ is the Euclidean distance between locations $\mathbf{s}_i$ and $\mathbf{s}_j$, and $\phi$ controls the range of spatial correlation.
+    -   $\mathbf{X}_i = [1, \text{AvgTemp}, \text{Precp}, \text{srad}]$ is the design matrix of predictors.
+    -   $\boldsymbol{\beta} = [\beta_0, \beta_1, \beta_2, \beta_3]$ are the regression coefficients for the intercept and covariates.
 
--   $\epsilon(\mathbf{s}_i) \sim \text{N}(0, \tau^2)$ represents the independent nugget effect, capturing measurement error or small-scale variability.
+-   **Spatially Correlated Random Effect**: $$w(\mathbf{s}_i) \sim \text{MVN}(\mathbf{0}, \mathbf{R} \cdot \sigma^2)$$
 
--   Prior distributions:
+    -   $\mathbf{R}$ is the spatial correlation matrix defined by a covariance function:
 
-    -   $\boldsymbol{\beta} \sim \text{MVN}(\mathbf{0}, 1000\mathbf{I})$
-    -   $\phi \sim \text{Uniform}(5, 50)$
-    -   $\sigma^2 \sim \text{Inverse-Gamma}(3, 80)$
-    -   $\tau^2 \sim \text{Inverse-Gamma}(3, 200)$
+    -   **Matérn Covariance Function** (if selected): $$\mathbf{R}_{ij} = \sigma^2 \cdot \frac{2^{1-\nu}}{\Gamma(\nu)} \left(\frac{\sqrt{2\nu} D_{ij}}{\rho}\right)^\nu K_\nu\left(\frac{\sqrt{2\nu} D_{ij}}{\rho}\right)$$
+
+    -   **Exponential Covariance Function** (if selected): $$\mathbf{R}_{ij} = \sigma^2 \cdot \exp(-\phi D_{ij})$$
+
+    -   **Gaussian Covariance Function** (if selected): $$\mathbf{R}_{ij} = \sigma^2 \cdot \exp(-\phi D_{ij}^2)$$
+
+    -   **Spherical Covariance Function** (if selected): $\rho$ is the range
+
+    $$\mathbf{R}_{ij} =
+            \begin{cases}
+            \sigma^2 \cdot \left(1 - \frac{3 D_{ij}}{2\rho} + \frac{D_{ij}^3}{2\rho ^3}\right), & D_{ij} \leq \rho \\
+            0, & D_{ij} > \rho
+            \end{cases}$$
+
+-   **Year-specific Random Effect**: $$u_{\text{year}(i)} \sim \text{N}(0, \tau^2_{\text{year}})$$
+
+    -   $u\_{\text{year}(i)}$ captures year-to-year variability, with $\tau^2\_{\text{year}}$ being the variance of the year effect.
+
+-   **Independent Nugget Effect**: $$\epsilon(\mathbf{s}_i) \sim \text{N}(0, \tau^2)$$
+
+    -   $\epsilon(\mathbf{s}\_i)$ accounts for measurement error or small-scale variability.
+
+------------------------------------------------------------------------
+
+**Prior Distributions**
+
+$$\boldsymbol{\beta} \sim \text{MVN}(\mathbf{0}, 1000\mathbf{I})$$
+
+$$\sigma^2 \sim \text{Inverse-Gamma}(2.5, 120)$$
+
+$$\phi \sim \text{Uniform}(5, 50) \quad \text{(Exponential or Gaussian covariance)}$$
+
+$$\nu \sim \text{Uniform}(0.5, 5) \quad \text{(Matérn covariance only)}$$
+
+$$\rho \sim \text{Uniform}(0, 1) \quad \text{(Matérn or Spherical covariance)}$$
+
+$$\tau^2 \sim \text{Inverse-Gamma}(0.001, 0.001)$$
+
+$$\tau^2_{\text{year}} \sim \text{Inverse-Gamma}(2.001, 0.667)$$
+
+------------------------------------------------------------------------
 
 Problem with `year` (replicate location):
 
--   [x] **Add some jitter to duplicated coordinates**
--   [ ] Treat `year` as random/fixed effect
--   [ ] Use function `spDynLM`
+-   [x] **Treat `year` as random effect**
 
 Problem with `genus`:
 
--   [x] **Not include**
 -   [x] **Fit each genus separately**
--   [ ] Treat `genus` as random effect
-
-#### 3.2.1 Not include `genus`
-
-The first relationship I test is $\text{DOY} \sim \text{Temp}_{\text{avg}}$. The distribution of $\beta_{\text{Temp}_{\text{avg}}}$ is concentrated at -1.65, which means the warmer the preseason temperature, the earlier the spring phenology, considering the spatial autocorrelation of phenology in the model (@fig-ny_allgenus_tavg_SOS_2).
-
-```{r}
-#| label: ny_allgenus_tavg_SOS
-#| include: true
-#| fig-height: 10
-#| fig-cap: 
-#|   - "Trace plot of correlation coefficients"
-#|   - "Trace plot of hyperparameters"
-#| warning: false
-
-set.seed(2025)
-coords <- coordinates(tavg_SOS)
-duplicated_flags <- duplicated(coords) | duplicated(coords, fromLast = TRUE)
-jitter_matrix <- matrix(0, nrow = nrow(coords), ncol = 2)
-jitter_matrix[duplicated_flags, ] <- matrix(rnorm(sum(duplicated_flags) * 2, mean = 0, sd = 1e-6),  ncol = 2)
-coords_jittered <- coords + jitter_matrix
-
-tavg_SOS_df <- as.data.frame(tavg_SOS)
-tavg_SOS_df$lon <- coords_jittered[, 1]
-tavg_SOS_df$lat <- coords_jittered[, 2]
-
-num_predictors <- 4
-D <- as.matrix(dist(coords_jittered))
-n.samples <- 3000
-starting <- list("phi" = 25, "sigma.sq" = 40, "tau.sq" = 100)
-tuning <- list("phi" = 0.1, "sigma.sq" = 0.1, "tau.sq" = 0.1)
-priors <- list(
-  "beta.Norm" = list(mean = rep(0, num_predictors), var = diag(1000, num_predictors)),
-  "phi.Unif" = c(5 / 1, 5 / 0.1),
-  "sigma.sq.IG" = c(3, 80),
-  "tau.sq.IG" = c(3, 200)
-)
 
 
-formula <- as.formula("doy ~ AvgTemp_mean + Sum_mm_sum + srad_mean")
 
-# model <- spLM(formula, data=tavg_SOS_df, coords=coords_jittered,
-#               starting=starting, tuning=tuning, priors=priors, knots = c(20, 20, 0),
-#               cov.model="exponential", verbose=TRUE, n.samples=n.samples, n.report=25)
-# save(model, file = "result/urban/ny_all_genus_tavg_SOS.RData")
-load("~/phenology-urban/data/proc/urban/ny_all_genus_tavg_SOS.RData")
-
-plot(model$p.beta.samples)
-plot(model$p.theta.samples)
-```
+##### NY SOS
 
 ```{r}
-#| label: fig-ny_allgenus_tavg_SOS_2
+#| label: fig-ny_sos_tavg
 #| include: true
-#| fig-cap: 
-#|   - "Distribution of (SOS ~ AvgTemp) coefficent"
+#| fig-cap: "The density of the posterior distribution of regression coefficients for `Temp~avg~` with `SOS` as the response variable for each genus in New York city."
+#| fig-height: 14
 #| warning: false
 
 
+dir_path <- "~/phenology-urban/data/proc/urban/sp_model/"
+files <- list.files(dir_path, pattern = "^NY.*SOS\\.rds$", full.names = TRUE)
+plots <- list()
 
-burn.in <- 0.5* n.samples
-##recover beta and spatial random effects
-# m.1 <- spRecover(model, start=burn.in, verbose=FALSE)
-# save(m.1, file = "result/urban/ny_all_genus_tavg_SOS_re.RData")
-load("~/phenology-urban/data/proc/urban/ny_all_genus_tavg_SOS_re.RData")
+for (file in files) {
+  model_data <- readRDS(file)
+  genus <- sub(".*NY_(.*?)_tavg_SOS\\.rds", "\\1", basename(file))
+  beta_label <- data.frame(Parameter = "beta[2]", Label = "AvgTemp")
+  param_data <- ggs(model_data$samples, par_labels = beta_label) %>%
+    filter(Parameter == "AvgTemp")
+  beta_median <- median(param_data$value)
+  p <- param_data %>%
+    ggs_density() +
+    theme_bw() +
+    ggtitle(paste("Genus:", genus)) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    annotate("text", x = beta_median, y = 0, label = paste0("Median: ", round(beta_median, 2)),vjust = -1.5, color = "red", size = 4)
+  plots[[genus]] <- p
+}
 
-beta_samples <- as.matrix(m.1$p.beta.recover.samples)
-temp_coefficients <- beta_samples[, "AvgTemp_mean"]
-mean_ndvi_coef <- mean(temp_coefficients)
-lower_ci <- quantile(temp_coefficients, 0.025)
-upper_ci <- quantile(temp_coefficients, 0.975)
-
-ndvi_coef_df <- data.frame(
-  Coefficient = temp_coefficients,
-  Type = "Avg_temp"
-)
-ggplot(ndvi_coef_df, aes(x = Coefficient)) +
-  geom_histogram(binwidth = 0.01, fill = "blue", alpha = 0.7) +
-  geom_vline(xintercept = mean_ndvi_coef, color = "red", linetype = "dashed", linewidth = 1) +
-  annotate("text", x = mean_ndvi_coef, y = 75, label = paste0("Mean: ", round(mean_ndvi_coef, 2)), 
-           color = "red", vjust = -1.5, hjust = 0.5) +
-  geom_vline(xintercept = lower_ci, color = "green", linetype = "dashed", linewidth = 1) +
-  geom_vline(xintercept = upper_ci, color = "green", linetype = "dashed", linewidth = 1) +
-  labs(title = "Distribution of Avg_temp Coefficients",
-       x = "Avg_temp Coefficient",
-       y = "Frequency") +
-  theme_minimal()
+combined_plot <- wrap_plots(plots, ncol = 2)
+combined_plot
 ```
 
-#### 3.2.2 Just for one `genus` (Acer)
 
-Just for one genus (Acer), the distribution of $\beta_{\text{Temp}_{\text{avg}}}$ is concentrated at -1.65, which means the warmer the preseason temperature, the earlier the spring phenology, considering the spatial autocorrelation of phenology in the model (@fig-ny_acer_tavg_SOS_2).
-
-```{r}
-#| label: ny_acer_tavg_SOS
-#| include: true
-#| fig-height: 10
-#| fig-cap: 
-#|   - "Trace plot of correlation coefficients"
-#|   - "Trace plot of hyperparameters"
-#| warning: false
-
-tavg_allyear_var <- readRDS("~/phenology-urban/data/proc/urban/NY/tavg_allyear_var.rds")
-tavg_SOS <- tavg_allyear_var %>% filter(direction == "up" & thres == 0.5 & genus == "Acer") %>%
-  na.omit()
-coordinates(tavg_SOS) <- ~ lon + lat
-
-set.seed(2025)
-coords <- coordinates(tavg_SOS)
-duplicated_flags <- duplicated(coords) | duplicated(coords, fromLast = TRUE)
-jitter_matrix <- matrix(0, nrow = nrow(coords), ncol = 2)
-jitter_matrix[duplicated_flags, ] <- matrix(rnorm(sum(duplicated_flags) * 2, mean = 0, sd = 1e-6),  ncol = 2)
-coords_jittered <- coords + jitter_matrix
-
-tavg_SOS_df <- as.data.frame(tavg_SOS)
-tavg_SOS_df$lon <- coords_jittered[, 1]
-tavg_SOS_df$lat <- coords_jittered[, 2]
-
-num_predictors <- 4
-D <- as.matrix(dist(coords_jittered))
-n.samples <- 4000
-starting <- list("phi" = 25, "sigma.sq" = 40, "tau.sq" = 100)
-tuning <- list("phi" = 0.1, "sigma.sq" = 0.1, "tau.sq" = 0.1)
-priors <- list(
-  "beta.Norm" = list(mean = rep(0, num_predictors), var = diag(1000, num_predictors)),
-  "phi.Unif" = c(5 / 1, 5 / 0.1),
-  "sigma.sq.IG" = c(3, 80),
-  "tau.sq.IG" = c(3, 200)
-)
-
-# model2 <- spLM(formula, data=tavg_SOS_df, coords=coords_jittered,
-#               starting=starting, tuning=tuning, priors=priors,knots = c(20, 20, 0),
-#               cov.model="exponential", verbose=TRUE, n.samples=n.samples, n.report=100)
-# save(model2, file = "result/urban/ny_acer_tavg_SOS.RData")
-load("~/phenology-urban/data/proc/urban/ny_acer_tavg_SOS.RData")
-
-burn.in <- 0.5* n.samples
-##recover beta and spatial random effects
-# m.2 <- spRecover(model2, start=burn.in, verbose=TRUE)
-# save(m.2, file = "result/urban/ny_acer_tavg_SOS_re.RData")
-load("~/phenology-urban/data/proc/urban/ny_acer_tavg_SOS_re.RData")
-
-plot(model2$p.beta.samples)
-plot(model2$p.theta.samples)
-```
-
-```{r}
-#| label: fig-ny_acer_tavg_SOS_2
-#| include: true
-#| fig-cap: 
-#|   - "Distribution of (SOS ~ AvgTemp) coefficent"
-#| warning: false
-
-beta_samples <- as.matrix(m.2$p.beta.recover.samples)
-temp_coefficients <- beta_samples[, "AvgTemp_mean"]
-mean_ndvi_coef <- mean(temp_coefficients)
-lower_ci <- quantile(temp_coefficients, 0.025)
-upper_ci <- quantile(temp_coefficients, 0.975)
-
-ndvi_coef_df <- data.frame(
-  Coefficient = temp_coefficients,
-  Type = "Avg_temp"
-)
-ggplot(ndvi_coef_df, aes(x = Coefficient)) +
-  geom_histogram(binwidth = 0.01, fill = "blue", alpha = 0.7) +
-  geom_vline(xintercept = mean_ndvi_coef, color = "red", linetype = "dashed", linewidth = 1) +
-  annotate("text", x = mean_ndvi_coef, y = 35, label = paste0("Mean: ", round(mean_ndvi_coef, 2)), 
-           color = "red", vjust = -1.5, hjust = 0.5) +
-  geom_vline(xintercept = lower_ci, color = "green", linetype = "dashed", linewidth = 1) +
-  geom_vline(xintercept = upper_ci, color = "green", linetype = "dashed", linewidth = 1) +
-  labs(title = "Distribution of Avg_temp Coefficients",
-       x = "Avg_temp Coefficient",
-       y = "Frequency") +
-  theme_minimal()
-```
-
-<!-- #### 3.2.3 Treat `genus` as fixed effect -->
-
-<!-- ```{r} -->
-
-<!-- #| label: ny_fixgenus_tavg_SOS -->
-
-<!-- #| eval: false -->
-
-<!-- #| include: false -->
-
-<!-- #| fig-cap:  -->
-
-<!-- #|   - "Trace plot of hyperparameters" -->
-
-<!-- #|   - "Distribution of (SOS ~ AvgTemp) coefficent" -->
-
-<!-- #| warning: false -->
-
-<!-- tavg_allyear_var <- readRDS("~/phenology-urban/data/proc/urban/NY/tavg_allyear_var.rds") -->
-
-<!-- tavg_SOS <- tavg_allyear_var %>% filter(direction == "up" & thres == 0.5) %>% -->
-
-<!--   na.omit() -->
-
-<!-- coordinates(tavg_SOS) <- ~ lon + lat -->
-
-<!-- coords <- coordinates(tavg_SOS) -->
-
-<!-- duplicated_flags <- duplicated(coords) | duplicated(coords, fromLast = TRUE) -->
-
-<!-- jitter_matrix <- matrix(0, nrow = nrow(coords), ncol = 2) -->
-
-<!-- jitter_matrix[duplicated_flags, ] <- matrix(rnorm(sum(duplicated_flags) * 2, mean = 0, sd = 1e-6),  ncol = 2) -->
-
-<!-- coords_jittered <- coords + jitter_matrix -->
-
-<!-- tavg_SOS_df <- as.data.frame(tavg_SOS) %>% -->
-
-<!--   select(genus, lon, lat,  doy,AvgTemp_mean,Sum_mm_sum, srad_mean) -->
-
-<!-- tavg_SOS_df$lon <- coords_jittered[, 1] -->
-
-<!-- tavg_SOS_df$lat <- coords_jittered[, 2] -->
-
-<!-- genus_dummies <- model.matrix(~ genus - 1, tavg_SOS_df) -->
-
-<!-- tavg_SOS_dummies <- model.matrix(~ lon + lat + doy + AvgTemp_mean + Sum_mm_sum + srad_mean, tavg_SOS_df) %>% -->
-
-<!--   as.data.frame() %>% -->
-
-<!--   bind_cols(as.data.frame(genus_dummies)) %>% -->
-
-<!--   dplyr::select(-`(Intercept)`) -->
-
-<!-- formula <- as.formula(paste("doy ~ ", paste(names(tavg_SOS_dummies)[!(names(tavg_SOS_dummies) %in% c("doy", "lon", "lat"))], collapse = " + "))) -->
-
-<!-- num_predictors <- ncol(tavg_SOS_dummies) - 3+1 -->
-
-<!-- D <- as.matrix(dist(coords_jittered)) -->
-
-<!-- n.samples <- 3000 -->
-
-<!-- starting <- list("phi" = 3 / 0.5, "sigma.sq" = 1, "tau.sq" = 0.1) -->
-
-<!-- tuning <- list("phi" = 0.1, "sigma.sq" = 0.1, "tau.sq" = 0.1) -->
-
-<!-- priors <- list( -->
-
-<!--   "beta.Norm" = list(mean = rep(0, num_predictors), var = diag(1000, num_predictors)), -->
-
-<!--   "phi.Unif" = c(3 / 1, 3 / 0.1), -->
-
-<!--   "sigma.sq.IG" = c(2, 1), -->
-
-<!--   "tau.sq.IG" = c(2, 1) -->
-
-<!-- ) -->
-
-<!-- model3 <- spLM(formula, data=tavg_SOS_dummies, coords=coords_jittered, -->
-
-<!--               starting=starting, tuning=tuning, priors=priors,knots = c(20, 20, 0), -->
-
-<!--               cov.model="exponential", verbose=TRUE, n.samples=n.samples, n.report=100) -->
-
-<!-- save(model3, file = "result/urban/ny_fixedgenus_tavg_SOS.RData") -->
-
-<!-- load("result/urban/ny_fixedgenus_tavg_SOS.RData") -->
-
-<!-- burn.in <- 0.5* n.samples -->
-
-<!-- #recover beta and spatial random effects -->
-
-<!-- m.3 <- spRecover(model3, start=burn.in, verbose=TRUE) -->
-
-<!-- save(m.3, file = "result/urban/ny_fixedgenus_tavg_SOS_re.RData") -->
-
-<!-- load("result/urban/ny_fixedgenus_tavg_SOS_re.RData") -->
-
-<!-- plot(model3$p.beta.samples) -->
-
-<!-- plot(model3$p.theta.samples) -->
-
-<!-- beta_samples <- as.matrix(m.3$p.beta.recover.samples) -->
-
-<!-- temp_coefficients <- beta_samples[, "AvgTemp_mean"] -->
-
-<!-- mean_ndvi_coef <- mean(temp_coefficients) -->
-
-<!-- lower_ci <- quantile(temp_coefficients, 0.025) -->
-
-<!-- upper_ci <- quantile(temp_coefficients, 0.975) -->
-
-<!-- ndvi_coef_df <- data.frame( -->
-
-<!--   Coefficient = temp_coefficients, -->
-
-<!--   Type = "Avg_temp" -->
-
-<!-- ) -->
-
-<!-- ggplot(ndvi_coef_df, aes(x = Coefficient)) + -->
-
-<!--   geom_histogram(binwidth = 0.01, fill = "blue", alpha = 0.7) + -->
-
-<!--   geom_vline(xintercept = mean_ndvi_coef, color = "red", linetype = "dashed", linewidth = 1) + -->
-
-<!--   geom_vline(xintercept = lower_ci, color = "green", linetype = "dashed", linewidth = 1) + -->
-
-<!--   geom_vline(xintercept = upper_ci, color = "green", linetype = "dashed", linewidth = 1) + -->
-
-<!--   labs(title = "Distribution of Avg_temp Coefficients", -->
-
-<!--        x = "Avg_temp Coefficient", -->
-
-<!--        y = "Frequency") + -->
-
-<!--   theme_minimal() -->
-
-<!-- ``` -->
-
-<!-- ```{r} -->
-
-<!-- create_scatter_plot <- function(data, x_var, y_var, title) { -->
-
-<!--   # Fit the linear model -->
-
-<!--   formula <- as.formula(paste(y_var, "~", x_var)) -->
-
-<!--   lm_model <- lm(formula, data = data) -->
-
-<!--   # Extract slope and p-value -->
-
-<!--   slope <- coef(lm_model)[2] -->
-
-<!--   p_value <- summary(lm_model)$coefficients[2, 4] -->
-
-<!--   # Create scatter plot -->
-
-<!--   scatter_plot <- data %>% -->
-
-<!--     ggplot(aes(x = .data[[x_var]], y = .data[[y_var]])) + -->
-
-<!--     geom_point() + -->
-
-<!--     geom_smooth(method = "lm", se = TRUE) + -->
-
-<!--     labs( -->
-
-<!--       x = x_var, -->
-
-<!--       y = y_var, -->
-
-<!--       title = paste(title) -->
-
-<!--     ) + -->
-
-<!--     annotate( -->
-
-<!--       "text", -->
-
-<!--       x = min(data[[x_var]], na.rm = TRUE), -->
-
-<!--       y = max(data[[y_var]], na.rm = TRUE), -->
-
-<!--       label = paste0( -->
-
-<!--         "Slope: ", round(slope, 2),  -->
-
-<!--         "\nP-value: ", signif(p_value, 3) -->
-
-<!--       ), -->
-
-<!--       hjust = 0, -->
-
-<!--       vjust = 1, -->
-
-<!--       color = "red" -->
-
-<!--     ) + -->
-
-<!--     theme_classic() -->
-
-<!--   return(scatter_plot) -->
-
-<!-- } -->
-
-<!-- create_scatter_plot( -->
-
-<!--   data = seasonal_temp_doy,  -->
-
-<!--   x_var = "Sum_Sum_mm_winter",  -->
-
-<!--   y_var = "doy", -->
-
-<!--   title = "Relationship between seasonal precipitation and spring phenology" -->
-
-<!-- ) -->
-
-<!-- model <- lmer(doy ~ Avg_AvgTemp_winter  + Sum_Sum_mm_winter  + -->
-
-<!--                 (1 | genus),  -->
-
-<!--               data = seasonal_temp_doy) -->
-
-<!-- fixed_effects <- tidy(model, effects = "fixed") -->
-
-<!-- fixed_effects_table <- fixed_effects %>% -->
-
-<!--   select(term, estimate, std.error, statistic) %>% -->
-
-<!--   mutate( -->
-
-<!--     estimate = round(estimate, 3), -->
-
-<!--     std.error = round(std.error, 3), -->
-
-<!--     p.value = signif(2 * (1 - pnorm(abs(statistic))), 3) -->
-
-<!--   ) -->
-
-<!-- kable(fixed_effects_table, format = "markdown", col.names = c("Term", "Estimate", "Std. Error", "t value", "P-Value")) -->
-
-<!-- ``` -->
 
 ## 4 Conclusion and next step
 
