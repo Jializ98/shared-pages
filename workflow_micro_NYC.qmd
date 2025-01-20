@@ -665,7 +665,7 @@ variogram_summary <- do.call(rbind, variogram_results)
 kable(variogram_summary, caption = "Fitted semivariogram model for each genus")
 ```
 
-### 3.2 Spatial statistical model using *spBayes*
+### 3.2 Spatial statistical model
 
 We modeled the relationship between the day of year ((\text{DOY})) and environmental covariates using a spatial hierarchical model. The response variable at location (\mathbf{s}\_i), denoted as (y(\mathbf{s}\_i)), was modeled as follows:
 
@@ -688,7 +688,7 @@ where:
 
     -   **Gaussian Covariance Function** (if selected): $$\mathbf{R}_{ij} = \sigma^2 \cdot \exp(-\phi D_{ij}^2)$$
 
-    -   **Spherical Covariance Function** (if selected): $\rho$ is the range
+    -   **Spherical Covariance Function** (if selected):
 
     $$\mathbf{R}_{ij} =
             \begin{cases}
@@ -698,7 +698,7 @@ where:
 
 -   **Year-specific Random Effect**: $$u_{\text{year}(i)} \sim \text{N}(0, \tau^2_{\text{year}})$$
 
-    -   $u\_{\text{year}(i)}$ captures year-to-year variability, with $\tau^2\_{\text{year}}$ being the variance of the year effect.
+    -   $u_{\text{year}(i)}$ captures year-to-year variability, with $\tau^2_{\text{year}}$ being the variance of the year effect.
 
 -   **Independent Nugget Effect**: $$\epsilon(\mathbf{s}_i) \sim \text{N}(0, \tau^2)$$
 
@@ -734,7 +734,7 @@ Problem with `genus`:
 
 
 
-##### NY SOS
+##### SOS in NYC
 
 ```{r}
 #| label: fig-ny_sos_tavg

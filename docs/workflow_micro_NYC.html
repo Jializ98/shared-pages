@@ -880,8 +880,8 @@ Figure&nbsp;2: Distribution of partial correlation coefficient and preseason len
 </div>
 </div>
 </section>
-<section id="spatial-statistical-model-using-spbayes" class="level3">
-<h3 class="anchored" data-anchor-id="spatial-statistical-model-using-spbayes">3.2 Spatial statistical model using <em>spBayes</em></h3>
+<section id="spatial-statistical-model" class="level3">
+<h3 class="anchored" data-anchor-id="spatial-statistical-model">3.2 Spatial statistical model</h3>
 <p>We modeled the relationship between the day of year (()) and environmental covariates using a spatial hierarchical model. The response variable at location (_i), denoted as (y(_i)), was modeled as follows:</p>
 <p><span class="math display">\[y(\mathbf{s}_i) = \mu(\mathbf{s}_i) + w(\mathbf{s}_i) + u_{\text{year}(i)} + \epsilon(\mathbf{s}_i)\]</span></p>
 <p>where:</p>
@@ -897,7 +897,7 @@ Figure&nbsp;2: Distribution of partial correlation coefficient and preseason len
 <li><p><strong>Matérn Covariance Function</strong> (if selected): <span class="math display">\[\mathbf{R}_{ij} = \sigma^2 \cdot \frac{2^{1-\nu}}{\Gamma(\nu)} \left(\frac{\sqrt{2\nu} D_{ij}}{\rho}\right)^\nu K_\nu\left(\frac{\sqrt{2\nu} D_{ij}}{\rho}\right)\]</span></p></li>
 <li><p><strong>Exponential Covariance Function</strong> (if selected): <span class="math display">\[\mathbf{R}_{ij} = \sigma^2 \cdot \exp(-\phi D_{ij})\]</span></p></li>
 <li><p><strong>Gaussian Covariance Function</strong> (if selected): <span class="math display">\[\mathbf{R}_{ij} = \sigma^2 \cdot \exp(-\phi D_{ij}^2)\]</span></p></li>
-<li><p><strong>Spherical Covariance Function</strong> (if selected): <span class="math inline">\(\rho\)</span> is the range</p></li>
+<li><p><strong>Spherical Covariance Function</strong> (if selected):</p></li>
 </ul>
 <p><span class="math display">\[\mathbf{R}_{ij} =
         \begin{cases}
@@ -906,7 +906,7 @@ Figure&nbsp;2: Distribution of partial correlation coefficient and preseason len
         \end{cases}\]</span></p></li>
 <li><p><strong>Year-specific Random Effect</strong>: <span class="math display">\[u_{\text{year}(i)} \sim \text{N}(0, \tau^2_{\text{year}})\]</span></p>
 <ul>
-<li><span class="math inline">\(u\_{\text{year}(i)}\)</span> captures year-to-year variability, with <span class="math inline">\(\tau^2\_{\text{year}}\)</span> being the variance of the year effect.</li>
+<li><span class="math inline">\(u_{\text{year}(i)}\)</span> captures year-to-year variability, with <span class="math inline">\(\tau^2_{\text{year}}\)</span> being the variance of the year effect.</li>
 </ul></li>
 <li><p><strong>Independent Nugget Effect</strong>: <span class="math display">\[\epsilon(\mathbf{s}_i) \sim \text{N}(0, \tau^2)\]</span></p>
 <ul>
@@ -931,8 +931,8 @@ Figure&nbsp;2: Distribution of partial correlation coefficient and preseason len
 <ul class="task-list">
 <li><label><input type="checkbox" checked=""><strong>Fit each genus separately</strong></label></li>
 </ul>
-<section id="ny-sos" class="level5">
-<h5 class="anchored" data-anchor-id="ny-sos">NY SOS</h5>
+<section id="sos-in-nyc" class="level5">
+<h5 class="anchored" data-anchor-id="sos-in-nyc">SOS in NYC</h5>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
