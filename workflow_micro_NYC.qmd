@@ -932,7 +932,44 @@ combined_plot <- wrap_plots(plots, ncol = 3)
 combined_plot
 ```
 
-##### 3.2.5 Comparison
+##### 3.2.5 GreenDown pace in NYC
+
+The response of green-down pace to temperature shows great variation among genera. For Acer, Betula, Carya, Celtis, Fraxinus, Morus, Platanus and Quercus, the warmer the preseason, the faster the green-down pace (shorter green-down length). For Juglans, Populus, Salix and Liquidambar, warmer preseason is associated with slower green-down pace (longer green-down length).
+
+```{r}
+#| label: fig-ny_greendown_tavg
+#| include: true
+#| fig-cap: "The density of the posterior distribution of regression coefficients for `Temp~avg~` with `Green-down pace` as the response variable for each genus in New York city."
+#| fig-height: 10
+#| fig-width: 10
+#| warning: false
+
+
+dir_path <- "~/phenology-urban/data/proc/urban/sp_model/"
+files <- list.files(dir_path, pattern = "^NY.*Down\\.rds$", full.names = TRUE)
+plots <- list()
+
+for (file in files) {
+  model_data <- readRDS(file)
+  genus <- sub(".*NY_(.*?)_tavg_(.*?)\\.rds", "\\1", basename(file))
+  beta_label <- data.frame(Parameter = "beta[2]", Label = "AvgTemp")
+  param_data <- ggs(model_data$samples, par_labels = beta_label) %>%
+    filter(Parameter == "AvgTemp")
+  beta_median <- median(param_data$value)
+  p <- param_data %>%
+    ggs_density() +
+    theme_bw() +
+    ggtitle(paste("Genus:", genus)) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    annotate("text", x = beta_median, y = 0, label = paste0("Median: ", round(beta_median, 2)),vjust = -1.5, color = "red", size = 4)
+  plots[[genus]] <- p
+}
+
+combined_plot <- wrap_plots(plots, ncol = 3)
+combined_plot
+```
+
+##### 3.2.6 Comparison
 
 The genus Alnus has fewer data points, leading to non-convergence of the posterior distribution. So it is ignored here.
 
@@ -985,16 +1022,29 @@ for (i in seq_along(Gup_files)) {
   param_gup_list[[i]] <- param_data
 }
 
+param_gdown_list <- list()
+for (i in seq_along(Gdown_files)) {
+  file <- Gdown_files[i]
+  model_data <- readRDS(file)
+  genus <- sub(".*NY_(.*?)_tavg_(.*?)\\.rds", "\\1", basename(file))
+  beta_label <- data.frame(Parameter = "beta[2]", Label = genus)
+  param_data <- ggs(model_data$samples, par_labels = beta_label) %>%
+    filter(Parameter == !!genus)
+  param_gdown_list[[i]] <- param_data
+}
+
 combined_param_sos_data <- bind_rows(param_sos_list) %>% filter(Parameter != "Alnus")
 combined_param_eos_data <- bind_rows(param_eos_list) %>% filter(Parameter != "Alnus")
 combined_param_gup_data <- bind_rows(param_gup_list) %>% filter(Parameter != "Alnus")
+combined_param_gdown_data <- bind_rows(param_gdown_list) %>% filter(Parameter != "Alnus")
 combined_param_data <- combined_param_sos_data %>%
   mutate(phe_type = "SOS") %>%
   bind_rows(combined_param_eos_data %>% mutate(phe_type = "EOS"))%>%
-  bind_rows(combined_param_gup_data %>% mutate(phe_type = "GreenUp"))
+  bind_rows(combined_param_gup_data %>% mutate(phe_type = "GreenUp"))%>%
+  bind_rows(combined_param_gdown_data %>% mutate(phe_type = "GreenDown"))
 
 # ggmcmc
-list(SOS=combined_param_sos_data, EOS=combined_param_eos_data, GreenUp=combined_param_gup_data) %>% 
+list(SOS=combined_param_sos_data, EOS=combined_param_eos_data, GreenUp=combined_param_gup_data, GreenDown = combined_param_gdown_data) %>% 
   ggs_caterpillar(thick_ci = c(0.05, 0.95),
                   thin_ci = c(0.025, 0.975),
                   horizontal = FALSE) +
@@ -1019,7 +1069,7 @@ summary_data <- combined_param_data %>%
     upper = quantile(value, probs = 0.975),
     .groups = "drop"
   )
-summary_data$phe_type <- factor(summary_data$phe_type, levels = c("SOS", "GreenUp", "EOS"))
+summary_data$phe_type <- factor(summary_data$phe_type, levels = c("SOS", "GreenUp", "EOS", "GreenDown"))
 ggplot(summary_data, aes(x = Parameter, y = mean_value, color = phe_type)) +
   geom_point(size = 3, position = position_dodge(width = 0.5)) +  
   geom_linerange(aes(ymin = lower, ymax = upper), size = 0.5, 
@@ -1028,10 +1078,10 @@ ggplot(summary_data, aes(x = Parameter, y = mean_value, color = phe_type)) +
   labs(
     x = "Genus",
     y = "The posterior of regression coefficients for Tavg",
-    color = "Phenological Type"
+    color = "Phenological parameter"
   ) +
   scale_color_manual(
-    values = c("SOS" = "darkgreen", "GreenUp" = "darkolivegreen3", "EOS" = "chocolate4", "")
+    values = c("SOS" = "darkgreen", "GreenUp" = "darkolivegreen3", "EOS" = "chocolate4",  "GreenDown" = "coral")
     #coral/chocolate
   ) +
   theme(
