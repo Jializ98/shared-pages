@@ -595,7 +595,10 @@ sos_p <- ggplot((tavg_allyear_pcorr %>% filter(type == "SOS")), aes(x = pre_leng
     y = "Partial correlation coefficient"
   ) +
   theme_minimal() +
-  theme(legend.position = "right")
+  theme(legend.position = "right",
+        axis.title.x = element_text(size = 14), 
+        axis.title.y = element_text(size = 14),
+        title = element_text(size = 14))
   
 greenup_p <- ggplot((tavg_allyear_pcorr %>% filter(type == "green-up pace")), aes(x = pre_length_candidate, y = pre_length_trend, color = genus, fill = genus, group = genus)) +
   geom_line(aes(alpha = 0.1)) +  # Add lines for trends
@@ -620,7 +623,10 @@ greenup_p <- ggplot((tavg_allyear_pcorr %>% filter(type == "green-up pace")), ae
     y = "Partial correlation coefficient"
   ) +
   theme_minimal() +
-  theme(legend.position = "right")
+  theme(legend.position = "right",
+        axis.title.x = element_text(size = 14), 
+        axis.title.y = element_text(size = 14),
+        title = element_text(size = 14))
 
 eos_p <- ggplot((tavg_allyear_pcorr %>% filter(type == "EOS")), aes(x = pre_length_candidate, y = pre_length_trend, color = genus, fill = genus, group = genus)) +
   geom_line(aes(alpha = 0.1)) +  # Add lines for trends
@@ -645,7 +651,10 @@ eos_p <- ggplot((tavg_allyear_pcorr %>% filter(type == "EOS")), aes(x = pre_leng
     y = "Partial correlation coefficient"
   ) +
   theme_minimal() +
-  theme(legend.position = "right")
+  theme(legend.position = "right",
+        axis.title.x = element_text(size = 14), 
+        axis.title.y = element_text(size = 14),
+        title = element_text(size = 14))
 
 
 greendown_p <- ggplot((tavg_allyear_pcorr %>% filter(type == "green-down pace")), aes(x = pre_length_candidate, y = pre_length_trend, color = genus, fill = genus, group = genus)) +
@@ -671,7 +680,10 @@ greendown_p <- ggplot((tavg_allyear_pcorr %>% filter(type == "green-down pace"))
     y = "Partial correlation coefficient"
   ) +
   theme_minimal() +
-  theme(legend.position = "right")
+  theme(legend.position = "right",
+        axis.title.x = element_text(size = 14), 
+        axis.title.y = element_text(size = 14),
+        title = element_text(size = 14))
 
 sos_p + greenup_p + plot_layout(guides = "collect") & theme(legend.position = "right")
 eos_p + greendown_p + plot_layout(guides = "collect") & theme(legend.position = "right")
@@ -681,7 +693,83 @@ eos_p + greendown_p + plot_layout(guides = "collect") & theme(legend.position = 
 
 ### 3.1 Check spatial autocorrelation
 
-Using `SOS` as an example, I fitted a linear mixed-effects model for each genus with environmental variables (`AvgTemp_mean`, `Sum_mm_sum`, and `srad_mean`) as predictors, with random effects for `year`. I used `check_heteroscedasticity()` to check for heteroscedasticity in the residuals. The results showed almost every model had heterogenerous residuals.
+First, I fitted a linear mixed-effects model for each genus with environmental variables (`AvgTemp_mean`, `Sum_mm_sum`, and `srad_mean`) as predictors, with random effects for `year` and `id`, which represent temporal (`(1 | year)`) and spatial (`(1 | id)`) randomness, respectively.
+
+Then I conducted a variance decomposition analysis and compared the proportion of total variance explained by spatial effects and temporal effects respectively. Generally, spatial and temporal variations are both present, but their contributions vary across different genera. Some genera show higher spatial effects, while others have more balanced contributions from spatial and year components.
+
+```{r}
+#| label: fig-check_variance
+#| include: true
+#| warning: false
+#| fig-cap: "Variance decomposition analysis for spatial and temporal effects"
+
+tavg_allyear_var <- readRDS("~/phenology-urban/data/proc/urban/NY/tavg_allyear_var.rds")
+phe_types <- c("SOS", "EOS", "GreenUp", "GreenDown")
+all_genus <- unique(tavg_allyear_var$genus)
+results <- list()
+
+for (phe_type in phe_types) {
+  if (phe_type == "SOS") {
+    phe_metric <- "doy"
+    direction <- "up"
+    thres <- 0.5
+  } else if (phe_type == "EOS") {
+    phe_metric <- "doy"
+    direction <- "down"
+    thres <- 0.5
+  } else if (phe_type == "GreenUp") {
+    phe_metric <- "doy_diff"
+    direction <- "up"
+    thres <- 0.2
+    tavg_allyear_var$doy_diff <- as.numeric(tavg_allyear_var$doy_diff)
+  } else {
+    phe_metric <- "doy_diff"
+    direction <- "down"
+    thres <- 0.2
+    tavg_allyear_var$doy_diff <- as.numeric(tavg_allyear_var$doy_diff)
+  }
+    
+    for (genus in all_genus) {
+      tavg_SOS <- tavg_allyear_var %>%
+        filter(direction == !!direction & thres == thres & genus == !!genus) %>%
+        na.omit()
+      model <- as.formula(paste0(phe_metric, " ~ AvgTemp_mean + Sum_mm_sum + srad_mean + (1|year) + (1 | id)"))
+      full_model <- lmer(model, data = tavg_SOS)
+      var_components <- VarCorr(full_model)
+      
+      total_variance <-  var_components$id[1, 1] +  var_components$year[1, 1] + attr(var_components, "sc")^2
+      spatial_contribution <- var_components$id[1, 1]  / total_variance
+      year_contribution <-  var_components$year[1, 1] / total_variance
+      residual_contribution <- attr(var_components, "sc")^2 / total_variance
+      
+      variance_components <- data.frame(
+            Metric = phe_type,
+            Genus = genus,
+            Component = c("Spatial", "Year", "Residual"),
+            Variance = c(spatial_contribution, year_contribution, residual_contribution)
+          )
+          
+          results[[paste(phe_type, genus, sep = "_")]] <- variance_components
+  }
+}
+
+final_results <- do.call(rbind, results)
+final_results <- final_results %>%
+  group_by(Metric, Genus) %>%
+  mutate(Variance_Proportion = Variance / sum(Variance),
+         Component = factor(Component, levels = c("Spatial", "Residual", "Year")),
+         Metric = factor(Metric, levels = c("SOS", "EOS", "GreenUp", "GreenDown")))
+
+ggplot(final_results, aes(x = Genus, y = Variance_Proportion, fill = Component)) +
+  geom_bar(stat = "identity", position = "stack") +
+  facet_wrap(~Metric, scales = "free_x") +
+  labs(x = "Genus", y = "Variance Proportion", fill = "Component") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_brewer(palette = "Set2") 
+```
+
+Using `SOS` as an example, I used `check_heteroscedasticity()` to check for heteroscedasticity in the residuals. The results showed almost every model had heterogenerous residuals.
 
 For fixed-effect model (`SOS` \~ `AvgTemp_mean` + `Sum_mm_sum` + `srad_mean`), `Global Moran I` for regression residuals test indicates the presence of spatial autocorrelation in the residuals. `Lagrange Multiplier` test suggests the spatial model should be applied.
 
@@ -694,99 +782,132 @@ I computed the empirical semivariogram for the residuals to analyze spatial stru
 
 tavg_allyear_var <- readRDS("~/phenology-urban/data/proc/urban/NY/tavg_allyear_var.rds")
 genera <- unique(tavg_allyear_var$genus)
-variogram_results <- list()
+
+
+variogram_sos <- list()
 for (i in 1:14) {
   genus = genera[i]
   tavg_SOS <- tavg_allyear_var %>%
     filter(direction == "up" & thres == 0.5 & genus == !!genus) %>%
     na.omit()
   random_OLS <- lmer(doy ~ AvgTemp_mean + Sum_mm_sum + srad_mean + (1|year), data = tavg_SOS)
-  print(check_heteroscedasticity(random_OLS))
+  # print(check_heteroscedasticity(random_OLS))
   tavg_SOS$residual_random <- tavg_SOS$doy - fitted(random_OLS)
-  
+
   coordinates(tavg_SOS) <- ~ lon + lat
   vgm.emt <- variogram(residual_random ~ 1, tavg_SOS, cloud = FALSE)
   vgm.las.init <- vgm(model = c("Exp", "Sph", "Gau", "Mat"))
   vgm_exn_fit <- fit.variogram(vgm.emt, vgm.las.init)
-  variogram_results[[i]] <- data.frame(
+  variogram_sos[[i]] <- data.frame(
     genus = genus,
-    model = vgm_exn_fit$model,
-    psill = vgm_exn_fit$psill,
-    range = vgm_exn_fit$range
+    SOS = vgm_exn_fit$model
   )
 }
-variogram_summary <- do.call(rbind, variogram_results)
+variogram_sos <- do.call(rbind, variogram_sos)
+
+
+variogram_eos <- list()
+for (i in 1:14) {
+  genus = genera[i]
+  tavg_SOS <- tavg_allyear_var %>%
+    filter(direction == "down" & thres == 0.5 & genus == !!genus) %>%
+    na.omit()
+  random_OLS <- lmer(doy ~ AvgTemp_mean + Sum_mm_sum + srad_mean + (1|year), data = tavg_SOS)
+  # print(check_heteroscedasticity(random_OLS))
+  tavg_SOS$residual_random <- tavg_SOS$doy - fitted(random_OLS)
+
+  coordinates(tavg_SOS) <- ~ lon + lat
+  vgm.emt <- variogram(residual_random ~ 1, tavg_SOS, cloud = FALSE)
+  vgm.las.init <- vgm(model = c("Exp", "Sph", "Gau", "Mat"))
+  vgm_exn_fit <- fit.variogram(vgm.emt, vgm.las.init)
+  variogram_eos[[i]] <- data.frame(
+    genus = genus,
+    EOS = vgm_exn_fit$model
+  )
+}
+variogram_eos <- do.call(rbind, variogram_eos)
+
+variogram_up <- list()
+for (i in 1:14) {
+  genus = genera[i]
+  tavg_SOS <- tavg_allyear_var %>%
+    filter(direction == "up" & thres == 0.2 & genus == !!genus) %>%
+    mutate(doy_diff = as.numeric(doy_diff))%>%
+    na.omit()
+  random_OLS <- lmer(doy_diff ~ AvgTemp_mean + Sum_mm_sum + srad_mean + (1|year), data = tavg_SOS)
+  # print(check_heteroscedasticity(random_OLS))
+  tavg_SOS$residual_random <- tavg_SOS$doy - fitted(random_OLS)
+
+  coordinates(tavg_SOS) <- ~ lon + lat
+  vgm.emt <- variogram(residual_random ~ 1, tavg_SOS, cloud = FALSE)
+  vgm.las.init <- vgm(model = c("Exp", "Sph", "Gau", "Mat"))
+  vgm_exn_fit <- fit.variogram(vgm.emt, vgm.las.init)
+  variogram_up[[i]] <- data.frame(
+    genus = genus,
+    GreenUp = vgm_exn_fit$model
+  )
+}
+variogram_up <- do.call(rbind, variogram_up)
+
+variogram_down <- list()
+for (i in 1:14) {
+  genus = genera[i]
+  tavg_SOS <- tavg_allyear_var %>%
+    filter(direction == "down" & thres == 0.2 & genus == !!genus) %>%
+    mutate(doy_diff = as.numeric(doy_diff))%>%
+    na.omit()
+  random_OLS <- lmer(doy_diff ~ AvgTemp_mean + Sum_mm_sum + srad_mean + (1|year), data = tavg_SOS)
+  # print(check_heteroscedasticity(random_OLS))
+  tavg_SOS$residual_random <- tavg_SOS$doy - fitted(random_OLS)
+
+  coordinates(tavg_SOS) <- ~ lon + lat
+  vgm.emt <- variogram(residual_random ~ 1, tavg_SOS, cloud = FALSE)
+  vgm.las.init <- vgm(model = c("Exp", "Sph", "Gau", "Mat"))
+  vgm_exn_fit <- fit.variogram(vgm.emt, vgm.las.init)
+  variogram_down[[i]] <- data.frame(
+    genus = genus,
+    GreenDown = vgm_exn_fit$model
+  )
+}
+variogram_down <- do.call(rbind, variogram_down)
+
+variogram_summary <- variogram_sos %>%
+  left_join(variogram_eos, by = "genus") %>%
+  left_join(variogram_up, by = "genus") %>%
+  left_join(variogram_down, by = "genus")
+
 kable(variogram_summary, caption = "Fitted semivariogram model for each genus")
 ```
 
+Sph: 26, Mat: 22, Gau: 4, Exp: 4
+HT: Sph, Mat
+
 ### 3.2 Spatial statistical model
 
-```{r}
-#| label: fig-direct_map
-#| include: true
-#| warning: false
-#| fig-cap: "SOS, Acer as example"
+I modeled the relationship between the phenology and environmental covariates using a spatial hierarchical model. The response variable (phenology parameter) at location $\mathbf{s}_i$ and in year $\mathbf{t}$, denoted as $y(\mathbf{s}_i, \mathbf{t})$, was modeled as following candidate model:
 
-# tavg_allyear_var_2020 <- readRDS("~/phenology-urban/data/proc/urban/NY/tavg_allyear_var.rds") %>%
-#   filter(genus == "Acer" & direction == "up" & thres == 0.5 & year== 2020) %>%
-#   na.omit() %>%
-#   group_by(id)%>%
-#   slice(1) %>%
-#   ungroup() %>%
-#   st_as_sf(coords = c("lon", "lat"), crs = 4326)
-# 
-# 
-# ggplot() +
-#   geom_sf(data = boundary, fill = "grey90") +
-#   geom_sf(data = tavg_allyear_var_2019, aes(color = AvgTemp_mean), size = 0.5) +
-#   scale_color_viridis_c(option = "C") +
-#   theme_minimal()
-# 
-# ggplot() +
-#   geom_sf(data = boundary, fill = "grey90") +
-#   geom_sf(data = tavg_allyear_var_2020, aes(color = AvgTemp_mean), size = 0.5) +
-#   scale_color_viridis_c(option = "C") +
-#   theme_minimal()
-# 
-# lm_result <- lm(doy ~ AvgTemp_mean, data = tavg_allyear_var)
-# # Extract slope and significance
-# slope <- coef(lm_result)[2] # Slope is the second coefficient
-# p_value <- summary(lm_result)$coefficients[2, 4] # P-value for the slope
-# 
-# # Add text annotation for slope and p-value
-# ggplot(tavg_allyear_var, aes(x = AvgTemp_mean, y = doy, color = genus)) +
-#   geom_point(size = 1) +
-#   geom_smooth(method = "lm", se = TRUE, aes(group = genus), linetype = "dashed") +
-#   annotate("text", x = mean(tavg_allyear_var$AvgTemp_mean), y = max(tavg_allyear_var$doy),
-#            label = paste0("Slope: ", round(slope, 2), "\nP-value: ", signif(p_value, 3)),
-#            hjust = 0, vjust = 1, size = 4, color = "black") +
-#   theme_classic()
-# # prediction map
-```
+**Model 1: (current use)**
 
-
-I modeled the relationship between the phenology and environmental covariates using a spatial hierarchical model. The response variable (phenology parameter) at location $\mathbf{s}_i$, denoted as $y(\mathbf{s}_i)$, was modeled as follows:
-
-$$y(\mathbf{s}_i) = \mu(\mathbf{s}_i) + w(\mathbf{s}_i) + u_{\text{year}(i)} + \epsilon(\mathbf{s}_i)$$
+$$y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w(\mathbf{s}_i) + u(\mathbf{t}) + \epsilon(\mathbf{s}_i, \mathbf{t})$$
 
 where:
 
--   **Fixed Effects**: $$\mu(\mathbf{s}_i) = \mathbf{X}_i \boldsymbol{\beta}$$
+-   *Fixed Effects*: $$\mu(\mathbf{s}_i,\mathbf{t}) = \mathbf{X}_{\mathbf{s}_i,\mathbf{t}} \boldsymbol{\beta}$$
 
-    -   $\mathbf{X}_i = [1, \text{AvgTemp}, \text{Precp}, \text{srad}]$ is the design matrix of predictors.
+    -   $\mathbf{X}_{\mathbf{s}_i,\mathbf{t}} = [1, \text{AvgTemp}_{\mathbf{s}_i,\mathbf{t}}, \text{Precp}_{\mathbf{s}_i,\mathbf{t}}, \text{srad}_{\mathbf{s}_i,\mathbf{t}}]$ is the design matrix of predictors.
     -   $\boldsymbol{\beta} = [\beta_0, \beta_1, \beta_2, \beta_3]$ are the regression coefficients for the intercept and covariates.
 
--   **Spatially Correlated Random Effect**: $$w(\mathbf{s}_i) \sim \text{MVN}(\mathbf{0}, \mathbf{R})$$
+-   *Spatially Correlated Random Effect*: $$w(\mathbf{s}_i) \sim \text{MVN}(\mathbf{0}, \mathbf{R})$$
 
     -   $\mathbf{R}$ is the spatial correlation matrix defined by a covariance function:
 
-    -   **Matérn Covariance Function** (if selected): $$\mathbf{R}_{ij} = \sigma^2 \cdot \frac{2^{1-\nu}}{\Gamma(\nu)} \left(\frac{\sqrt{2\nu} D_{ij}}{\rho}\right)^\nu K_\nu\left(\frac{\sqrt{2\nu} D_{ij}}{\rho}\right)$$
+    -   Matérn Covariance Function (if selected): $$\mathbf{R}_{ij} = \sigma^2 \cdot \frac{2^{1-\nu}}{\Gamma(\nu)} \left(\frac{\sqrt{2\nu} D_{ij}}{\rho}\right)^\nu K_\nu\left(\frac{\sqrt{2\nu} D_{ij}}{\rho}\right)$$
 
-    -   **Exponential Covariance Function** (if selected): $$\mathbf{R}_{ij} = \sigma^2 \cdot \exp(-\phi D_{ij})$$
+    -   Exponential Covariance Function (if selected): $$\mathbf{R}_{ij} = \sigma^2 \cdot \exp(-\phi D_{ij})$$
 
-    -   **Gaussian Covariance Function** (if selected): $$\mathbf{R}_{ij} = \sigma^2 \cdot \exp(-\phi D_{ij}^2)$$
+    -   Gaussian Covariance Function (if selected): $$\mathbf{R}_{ij} = \sigma^2 \cdot \exp(-\phi D_{ij}^2)$$
 
-    -   **Spherical Covariance Function** (if selected):
+    -   Spherical Covariance Function (if selected):
 
     $$\mathbf{R}_{ij} =
             \begin{cases}
@@ -794,41 +915,244 @@ where:
             0, & D_{ij} > \rho
             \end{cases}$$
 
--   **Year-specific Random Effect**: $$u_{\text{year}(i)} \sim \text{N}(0, \tau^2_{\text{year}})$$
+-   *Year-specific Random Effect*: $$u(\mathbf{t}) \sim \text{N}(0, \tau^2_{\mathbf{t}})$$
 
-    -   $u_{\text{year}(i)}$ captures year-to-year variability, with $\tau^2_{\text{year}}$ being the variance of the year effect.
+    -   $u_{\mathbf{t}}$ captures year-to-year variability, with $\tau^2_{\mathbf{t}}$ being the variance of the year effect.
 
--   **Independent Nugget Effect**: $$\epsilon(\mathbf{s}_i) \sim \text{N}(0, \tau^2)$$
+-   *Independent Nugget Effect*: $$\epsilon(\mathbf{s}_i) \sim \text{N}(0, \tau^2)$$
 
-    -   $\epsilon(\mathbf{s}_i)$ accounts for measurement error or small-scale variability.
+    -   $\epsilon(\mathbf{s}_i, \mathbf{t})$ accounts for measurement error or small-scale variability.
+    
+**Model 2: (checked)**
 
-------------------------------------------------------------------------
+$$y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w(\mathbf{s}_i, \mathbf{t}) + \epsilon(\mathbf{s}_i, \mathbf{t})$$
 
-**Prior Distributions**
+where:
 
-$$\boldsymbol{\beta} \sim \text{MVN}(\mathbf{0}, 1000\mathbf{I})$$
+-   *Fixed Effects*: same as above.
 
-$$\sigma^2 \sim \text{Inverse-Gamma}(2.5, 120)$$
+-   *Spatio-temporal Random Effect*: $$w(\mathbf{s}_i, \mathbf{t}) \sim \text{MVN}(\mathbf{0}, \mathbf{R}_{\mathbf{s}\mathbf{t}})$$
+    
+    -   $\mathbf{R}$ is the spatio-temporal correlation matrix defined by covariance function. The function format is the same.
+    
+    -   Instead, $D_{ij}$ is the distance using 3-dimension coordinate, (scaled_longitude, scaled_latitude, scaled_year).
 
-$$\phi \sim \text{Uniform}(5, 50) \quad \text{(Exponential or Gaussian covariance)}$$
+-   *Independent Nugget Effect*: same as above.
 
-$$\nu \sim \text{Uniform}(0.5, 5) \quad \text{(Matérn covariance only)}$$
+**Model 3: **
 
-$$\rho \sim \text{Uniform}(0, 1) \quad \text{(Matérn or Spherical covariance)}$$
+$$y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w_t(\mathbf{s}_i) + \epsilon(\mathbf{s}_i, \mathbf{t})$$
 
-$$\tau^2 \sim \text{Inverse-Gamma}(0.001, 0.001)$$
+where:
 
-$$\tau^2_{\text{year}} \sim \text{Inverse-Gamma}(2.001, 0.667)$$
+-   *Fixed Effects*: same as above.
 
-------------------------------------------------------------------------
+-   *Spatio-temporal Random Effect*: $$w_t(\mathbf{s}_i) \sim \text{MVN}(\mathbf{0}, \mathbf{R}_{\mathbf{t}})$$
+    
+    -   $\mathbf{R}_{\mathbf{t}}$ is fitted for each year. Or the parameters in covariance matrix, e.g., $\phi(\mathbf{t}_j) \sim \text{N}(0, \tau^2_{\phi})$
 
-Details on handling `year` (replicate location):
+-   *Independent Nugget Effect*: same as above.
 
--   [x] Treat `year` as random effect
+**Model 4: **
 
-Details on handling `genus`:
+$$y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w(\mathbf{s}_i) + u(\mathbf{t}) + \epsilon(\mathbf{s}_i, \mathbf{t})$$
 
--   [x] Fit each genus separately
+where:
+
+-   *Fixed Effects*: same as above.
+
+-   *Spatially Correlated Random Effect*: $$w(\mathbf{s}_i) \sim \text{MVN}(\mathbf{0}, \mathbf{R})$$
+
+    -   $\mathbf{R}$ is the spatial correlation matrix defined by a covariance function:
+    
+    $$\mathbf{R}_{ij} = 
+    \begin{cases} 
+    0 \text{ or a very samll value} & \text{if } \mathbf{t}_{i} \neq \mathbf{t}_{j} \\
+    \text{follow covariance function}  & \text{otherwise}
+    \end{cases}$$
+
+-   *Year-specific Random Effect*: same as above.
+
+-   *Independent Nugget Effect*: same as above.
+
+##### 3.2.0 Simulation for canndidate models
+
+For model comparison, I simulated the data with the true slope of `Avg_temp` is **-2**. Both spatial variance (exp covariance) and temporal variance are included. Some records happen in the same location.
+
+```{r}
+#| label: fig-model_simulate
+#| include: true
+#| eval: false
+#| code-fold: false
+
+################ Make up the simulation data ################
+set.seed(2025)
+lon_range <- c(-74.25156, -73.70623)
+lat_range <- c(40.50458, 40.91093)
+N <- 200 
+lon <- runif(N, min = lon_range[1], max = lon_range[2])
+lat <- runif(N, min = lat_range[1], max = lat_range[2])
+
+years <- 2017:2023
+nyears <- length(years)
+year <- sample(years, N, replace = TRUE)
+
+# fix effects: intercept, tavg, precp, srad
+intercept <- 120
+tavg <- runif(N, 0, 25)
+precp <- runif(N, 0, 500)
+srad <- runif(N, 300, 450)
+
+beta <- c(intercept, -2, 0.05, 0.05)
+X <- cbind(1, tavg, precp, srad)
+
+# spatial effect
+sigma.sq <- 80
+phi <- 25
+spatial_effect <- numeric(N)
+
+for (y in years) {
+  year_idx <- which(year == y)
+  if (length(year_idx) > 1) {
+    lon_year <- lon[year_idx]
+    lat_year <- lat[year_idx]
+    dist_matrix_year <- as.matrix(dist(cbind(lon_year, lat_year)))
+    cov_matrix_year <- sigma.sq * exp(-phi * dist_matrix_year)
+    spatial_effect[year_idx] <- mvrnorm(1, mu = rep(0, length(year_idx)), Sigma = cov_matrix_year)
+  } else {
+    spatial_effect[year_idx] <- 0
+  }
+}
+
+# year effect
+year_effect <- rnorm(nyears, mean = 0, sd = 1)
+
+mu <- numeric(N)
+y <- numeric(N)
+tau <- 1 
+for (i in 1:N) {
+  year_idx <- which(years == year[i])
+  mu[i] <- X[i,] %*% beta + spatial_effect[i] + year_effect[year_idx]
+  y[i] <- rnorm(1, mean = mu[i], sd = sqrt(1/tau))
+}
+
+sim_data <- data.frame(
+  lon = lon,
+  lat = lat,
+  year = year,
+  AvgTemp_mean = tavg,
+  Sum_mm_sum = precp,
+  srad_mean = srad,
+  spatial_effect = spatial_effect,
+  doy = y
+)
+```
+
+
+
+```{r}
+#| label: fig-model_simulate_check
+#| include: true
+#| eval: true
+#| fig-height: 3
+#| fig-cap: "The distribution of posterior for Temp coeffeicent using simulated data."
+
+################ Result form Nimble using 4 model ################
+
+dir_path <- "~/phenology-urban/data/proc/urban/sp_model/"
+files <- list.files(dir_path, pattern = "^SIM.*Exp\\.rds$", full.names = TRUE)
+plots <- list()
+
+for (file in files) {
+  model_data <- readRDS(file)
+  genus <- sub(".*SIM_(.*?)_tavg_SOS_Exp\\.rds", "\\1", basename(file))
+  beta_label <- data.frame(Parameter = "beta[2]", Label = "AvgTemp")
+  param_data <- ggs(model_data$samples, par_labels = beta_label) %>%
+    filter(Parameter == "AvgTemp")
+  beta_median <- median(param_data$value)
+  beta_mean <- mean(param_data$value)
+  p <- param_data %>%
+    ggs_density() +
+    theme_bw() +
+    ggtitle(paste("Model:", genus)) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    annotate("text", x = beta_median, y = 0, label = paste0("Median: ", round(beta_median, 2)),vjust = -1.5, color = "red", size = 4) +
+    annotate("text", x = beta_mean, y = 2, label = paste0("Mean: ", round(beta_mean, 2)),vjust = -1.5, color = "red", size = 4)
+  plots[[genus]] <- p
+}
+
+combined_plot <- wrap_plots(plots, ncol = 2)
+combined_plot
+
+
+
+```
+```{r}
+#| label: fig-model_sen_check
+#| include: true
+#| eval: true
+#| fig-cap: "The distribution of posterior for Temp coeffeicent using simulated data and different covariance model."
+#| fig-subcap: 
+#|   - "Model 1: Spatial random effect & year random effect"
+#|   - "Model 2: Spatio-temporal random effect"
+
+
+################ Sensitivity to different covariance model ################
+
+dir_path <- "~/phenology-urban/data/proc/urban/sp_model/"
+
+files <- list.files(dir_path, pattern = "^SIM_sp_random.*\\.rds$", full.names = TRUE)
+plots <- list()
+
+for (file in files) {
+  model_data <- readRDS(file)
+  genus <- sub(".*SIM_(.*?)_tavg_SOS_(.*?)\\.rds", "\\2", basename(file))
+  
+  beta_label <- data.frame(Parameter = "beta[2]", Label = "AvgTemp")
+  param_data <- ggs(model_data$samples, par_labels = beta_label) %>%
+    filter(Parameter == "AvgTemp")
+  beta_median <- median(param_data$value)
+  beta_mean <- mean(param_data$value)
+  p <- param_data %>%
+    ggs_density() +
+    theme_bw() +
+    ggtitle(paste("Model:", genus)) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    annotate("text", x = beta_median, y = 0, label = paste0("Median: ", round(beta_median, 2)),vjust = -1.5, color = "red", size = 4) +
+    annotate("text", x = beta_mean, y = 2, label = paste0("Mean: ", round(beta_mean, 2)),vjust = -1.5, color = "red", size = 4)
+  plots[[genus]] <- p
+}
+
+combined_plot2 <- wrap_plots(plots, ncol = 2)
+combined_plot2
+
+files <- list.files(dir_path, pattern = "^SIM_joint.*\\.rds$", full.names = TRUE)
+plots <- list()
+
+for (file in files) {
+  model_data <- readRDS(file)
+  genus <- sub(".*SIM_(.*?)_tavg_SOS_(.*?)\\.rds", "\\2", basename(file))
+  
+  beta_label <- data.frame(Parameter = "beta[2]", Label = "AvgTemp")
+  param_data <- ggs(model_data$samples, par_labels = beta_label) %>%
+    filter(Parameter == "AvgTemp")
+  beta_median <- median(param_data$value)
+  beta_mean <- mean(param_data$value)
+  p <- param_data %>%
+    ggs_density() +
+    theme_bw() +
+    ggtitle(paste("Model:", genus)) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    annotate("text", x = beta_median, y = 0, label = paste0("Median: ", round(beta_median, 2)),vjust = -1.5, color = "red", size = 4) +
+    annotate("text", x = beta_mean, y = 2, label = paste0("Mean: ", round(beta_mean, 2)),vjust = -1.5, color = "red", size = 4)
+  plots[[genus]] <- p
+}
+
+combined_plot <- wrap_plots(plots, ncol = 2)
+combined_plot
+```
+
+
 
 ##### 3.2.1 Nimble model code (run in separate script)
 
