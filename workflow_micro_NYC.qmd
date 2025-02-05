@@ -20,25 +20,24 @@ library(zhulabtools)
 load_packages(c("dplyr","lubridate", "ggplot2", "sf","sp", "readr", "purrr", "stringr","glue", "tidyr", "broom","lme4", "knitr", "broom.mixed", "ppcor", "spdep", "spatialreg", "lmtest","car", "spBayes", "coda", "patchwork", "performance", "terra", "ggpmisc", "gstat", "ggmcmc"))
 # source("~/phenology-urban/script/read_clean_WU.R")
 select <- dplyr::select
-city = "NY"
 ```
 
 ## Intro
 
--   Check the variogram
--   diagnistic for model
--   scale up
--   marginal prediction
-
-
 
 -   Key highlights (coordinate them with Juwon):
-    -   Within-city variation, fall phenology: [Katz et al., 2019](https://www.sciencedirect.com/science/article/pii/S0048969718343675) [Xing et al., 2022](https://link.springer.com/article/10.1007/s00484-022-02322-1). A few papers about intra-urban variation of phenology. Few about the fall phenology.
+
+    -   Within-city variation: fine-scale of phenology and climate observations, across large range.
     
+    -   Spring & Fall phenology: [Katz et al., 2019](https://www.sciencedirect.com/science/article/pii/S0048969718343675) [Xing et al., 2022](https://link.springer.com/article/10.1007/s00484-022-02322-1). A few papers about intra-urban variation of phenology. Few about the fall phenology.
+
     -   Phenology pace, different taxa
--   Preseason Optimization: At the year-, site-, and taxa-level. Individual-level pre-period might have some built-in relationship.
--   Pace: As for the algorithm, more uncertainty around 0% and 100%. Use thresholds within the period (20–80%) to represent pace.
--   Spatial regression: Use `nimble` package to address spatial autocorrelation.
+
+- Methods
+
+    -   Preseason Optimization: At the year-, site-, and taxa-level. Individual-level pre-period might have some built-in relationship.
+    
+    -   Spatial regression: Use `nimble` package to address spatial autocorrelation.
 
 ## 1 Raw data
 
@@ -116,43 +115,60 @@ points_in_buffer <- tree_location %>%
 #| label: fig-tree_wu_sites
 #| include: true
 #| fig-cap: "Location of WU sites and trees"
+#| fig-width: 13
 #| warning: false
 
-points_in_buffer <- read_csv(paste0("~/phenology-urban/data/proc/urban/",city,"/tree_WU_500_buffer_PS.csv"), show_col_types = FALSE)
+cities = c("NY", "HT", "DV")
+plots = list()
 
-points_in_buffer_sf <- points_in_buffer %>%
-  st_as_sf(coords = c("lon", "lat"), crs = 4326)
 
-boundary <- switch(
-  city,
-  "NY" = st_read("~/urban-cooling/data/raw/WU/NY/Untitled/nybb_dissolved.shp") %>%
-    st_transform(4326),
-  "DT" = st_read("~/urban-cooling/data/raw/WU/DT/City_of_Detroit_Boundary/City_of_Detroit_Boundary.shp") %>%
-    st_transform(4326),
-  "ST" = st_read("~/urban-cooling/data/raw/WU/ST/seattle_boundary/CityUGA.shp") %>%
-    st_transform(4326) %>%
-    filter(CITY_NM == "Seattle"),
-  "HT" = st_read("~/urban-cooling/data/raw/WU/HT/kx-houston-texas-city-limits-SHP/houston-texas-city-limits.shp") %>%
-    st_transform(4326),
-  "TP" = st_read("~/urban-cooling/data/raw/WU/TP/Municipal_Boundary/Municipal_Boundary.shp") %>%
-    st_transform(4326) %>%
-    filter(NAME == "Tampa"),
-  "DV" = st_read("~/urban-cooling/data/raw/WU/DV/denver-boundary/denver-colorado-county-boundary.shp") %>%
-    st_transform(4326),
-  "AT" = st_read("~/urban-cooling/data/raw/WU/AT/TxDOT_City_Boundaries/Cities.shp") %>%
-    filter(CITY_NM == "Austin") %>%
-    st_transform(4326),
-  stop("Invalid city abbreviation.")
-)
+for (city in cities){
+  points_in_buffer <- read_csv(paste0("~/phenology-urban/data/proc/urban/",city,"/tree_WU_500_buffer_PS.csv"), show_col_types = FALSE)
+  points_in_buffer_sf <- points_in_buffer %>%
+    st_as_sf(coords = c("lon", "lat"), crs = 4326)
+  # us_boundary <- st_read("~/urban-niche/data/raw/CONUS/boundary/us_boundarydissolve.shp") %>%
+  #     st_transform(4326)
+  
+  boundary <- switch(
+    city,
+    "NY" = st_read("~/urban-cooling/data/raw/WU/NY/Untitled/nybb_dissolved.shp") %>%
+      st_transform(4326),
+    "DT" = st_read("~/urban-cooling/data/raw/WU/DT/City_of_Detroit_Boundary/City_of_Detroit_Boundary.shp") %>%
+      st_transform(4326),
+    "ST" = st_read("~/urban-cooling/data/raw/WU/ST/seattle_boundary/CityUGA.shp") %>%
+      st_transform(4326) %>%
+      filter(CITY_NM == "Seattle"),
+    "HT" = st_read("~/urban-cooling/data/raw/WU/HT/kx-houston-texas-city-limits-SHP/houston-texas-city-limits.shp") %>%
+      st_transform(4326),
+    "TP" = st_read("~/urban-cooling/data/raw/WU/TP/Municipal_Boundary/Municipal_Boundary.shp") %>%
+      st_transform(4326) %>%
+      filter(NAME == "Tampa"),
+    "DV" = st_read("~/urban-cooling/data/raw/WU/DV/denver-boundary/denver-colorado-county-boundary.shp") %>%
+      st_transform(4326),
+    "AT" = st_read("~/urban-cooling/data/raw/WU/AT/TxDOT_City_Boundaries/Cities.shp") %>%
+      filter(CITY_NM == "Austin") %>%
+      st_transform(4326),
+    stop("Invalid city abbreviation.")
+  )
+  
+  wu_location <- read_csv(paste0("~/urban-cooling/data/raw/WU/", city, "/location.csv"), show_col_types = FALSE) %>%
+    st_as_sf(coords = c("Lon", "Lat"), crs = 4326)
+  
+  p = ggplot() +
+    geom_sf(data = boundary, fill = "grey90") +
+    # geom_sf(data = us_boundary, color = "blue", size = 1) +
+    geom_sf(data = wu_location, color = "blue", size = 0.5) +
+    geom_point(data = points_in_buffer, aes(x = lon, y = lat), color = "red",size = 0.01, alpha = 0.01) +
+    labs(title = city)
+    theme_minimal()
+  plots[[city]] = p
+}
 
-wu_location <- read_csv(paste0("~/urban-cooling/data/raw/WU/", city, "/location.csv"), show_col_types = FALSE) %>%
-  st_as_sf(coords = c("Lon", "Lat"), crs = 4326)
 
-ggplot() +
-  geom_sf(data = boundary, fill = "grey") +
-  geom_sf(data = wu_location, color = "blue", size = 1) +
-  geom_sf(data = points_in_buffer_sf, color = "red", size = 0.01) +
-  theme_minimal()
+combined_plot <- wrap_plots(plots, ncol = 3)
+combined_plot
+
+city = "NY"
 ```
 
 ### 1.2 Read and clean the WU data (based on GHCNd)
@@ -183,15 +199,12 @@ srad_daily <- readRDS(paste0("~/phenology-urban/data/raw/",city,"/Daymet/daily20
   select(id, value, date)
 ```
 
-## 2 Find the optimal preseason
+## 2 Phenological indicators and optimal preseason
 
-The seasonal climate variables use a fixed pre-season for every trees, not allowing heterogeneity within city. Also, the roughly divided season make it difficult to connect to phenology process, e.g. chilling and forcing accumulation. Therefore, some studies use varing preseason or optimal preseason.
+The phenological metrics are defined as follows:
 
-[Meng et al., 2020](https://www.sciencedirect.com/science/article/pii/S0168192319304484?via%3Dihub), [Wang et al., 2021](https://onlinelibrary.wiley.com/doi/10.1111/gcb.15777): The preseason was defined as the period from November 1st in the previous year to the time of `SOS` in the current year. (most fixed)
+![Phenology metrics calculated based on EVI curve from PlanetScope](docs/pheno_matrix.png){#fig-pheno_matrics}
 
-[Meng et al., 2020](https://www.pnas.org/doi/10.1073/pnas.1911117117#sec-3), [Yin et al., 2024](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2023EF004127): For each city, the period for which the absolute value of the partial correlation coefficient between `SOS` and `Temp` was highest was considered the optimal length of the preseason most relevant to `SOS`. (more flexible, cadidate time: 0 to 6 months prior to SOS, 5-day interval approach from January 1st to the average SOS date)
-
-Here, based on the variable (phenology metric: `SOS`, `EOS`, `green-up pace`, `green-down pace`, temp. metric: t_avg, t_min, t_max), I find the optimal preseason at genus-city level (ignore the year for now due to sample size). The period for which the absolute value of the partial correlation coefficient between phenology and temp. metric is highest is considered the optimal length of the preseason most relevant to the certain phenology metric.
 
 ```{r}
 #| label: optimal_preseason_fun
@@ -538,11 +551,15 @@ fall_pace_combined_results <- do.call(rbind, lapply(fall_pace_combined_results, 
 
 ### 2.3 Optimal preseason length calculated by Temp~avg~
 
-@fig-partial_preseason displays the distribution of optimal preseason length and partial correlation coefficient calculated by Temp~avg~ for `SOS`, `Greenup pace`, `EOS` and `Greenup pace`, respectively.
+Defined as the period (5-180 days, with 5-day steps) before phenological event for which the partial correlation coefficient between mean phenological event date and average temperature was highest, controlling other climate variables. [Meng et al., 2020](https://www.pnas.org/doi/10.1073/pnas.1911117117#sec-3), [Yin et al., 2024](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2023EF004127)
 
-As for `SOS`, all genera have negetive partial correlation coefficients, which means the higher preseason average temperature, the earlier start of season. As for `Greenup pace`, most genera (except Carya, Celtis) have negetive partial correlation coefficients, which means the higher preseason average temperature, the faster green up pace. The preseason length varies significantly among genera.
+![Conceptual diagram for optimal preseason](docs/preseason.png){#fig-preseason_concept}
 
-As for `EOS`, most genera (except Populus, Platanus) have positive partial correlation coefficients, which means the higher preseason average temperature, the later end of season. As for `Greenup pace`, there is variation in impact direction among genera. The preseason length also varies significantly among genera.
+@fig-partial_preseason displays the distribution of optimal preseason length and partial correlation coefficient calculated by Temp~avg~ for `SOS`, `Greenup pace`, `EOS` and `Greenup pace`, respectively. 
+
+Optimal preseason length for spring phenology varies among genera. As for `SOS`, all genera have negetive partial correlation coefficients, which means the higher preseason average temperature, the earlier start of season. As for `Greenup pace`, most genera (except Carya, Celtis) have negetive partial correlation coefficients, which means the higher preseason average temperature, the faster green up pace. The preseason length varies significantly among genera.
+
+Both the optimal preseason length for fall phenology and the response direction vary significantly among genera. As for `EOS`, most genera (except Populus, Platanus) have positive partial correlation coefficients, which means the higher preseason average temperature, the later end of season. As for `Greenup pace`, there is variation in impact direction among genera. The preseason length also varies significantly among genera.
 
 ```{r}
 #| label: fig-partial_preseason
@@ -565,10 +582,10 @@ tavg_allyear_pcorr <- readRDS(paste0("~/phenology-urban/data/proc/urban/",city,"
     # Adjust transparency
     alpha = ifelse(is_optimal, 1, 0.2),
     shape = ifelse(is_significant, 21, 1),
-    size = ifelse(is_optimal, 2.5, 1.2)
+    size = ifelse(is_optimal, 4, 1.2)
   ) %>%
   mutate(shape = factor(shape, levels = c(21, 1)),
-         size = factor(size, levels = c(1.2, 2.5)))
+         size = factor(size, levels = c(1.2, 4)))
   
 
 # Create the plot
@@ -580,11 +597,11 @@ sos_p <- ggplot((tavg_allyear_pcorr %>% filter(type == "SOS")), aes(x = pre_leng
   scale_shape_manual(
     name = "Significance", 
     values = c(21, 1),
-    labels = c("p < 0.05", "p > 0.05")   
+    labels = c("p <= 0.05", "p > 0.05")   
     ) +
   scale_size_manual(
     name = "Pre-season length",  
-    values = c(1.2, 2.5), 
+    values = c(1.2, 4), 
     labels = c("Others", "Optimal preseason length")
   ) +
   guides(
@@ -608,11 +625,11 @@ greenup_p <- ggplot((tavg_allyear_pcorr %>% filter(type == "green-up pace")), ae
   scale_shape_manual(
     name = "Significance", 
     values = c(21, 1),
-    labels = c("p < 0.05", "p > 0.05")   
+    labels = c("p <= 0.05", "p > 0.05")   
     ) +
   scale_size_manual(
     name = "Pre-season length",  
-    values = c(1.2, 2.5), 
+    values = c(1.2, 4), 
     labels = c("Others", "Optimal preseason length")
   ) +
   guides(
@@ -636,11 +653,11 @@ eos_p <- ggplot((tavg_allyear_pcorr %>% filter(type == "EOS")), aes(x = pre_leng
   scale_shape_manual(
     name = "Significance", 
     values = c(21, 1),
-    labels = c("p < 0.05", "p > 0.05")   
+    labels = c("p <= 0.05", "p > 0.05")   
     ) +
   scale_size_manual(
     name = "Pre-season length",  
-    values = c(1.2, 2.5), 
+    values = c(1.2, 4), 
     labels = c("Others", "Optimal preseason length")
   ) +
   guides(
@@ -665,11 +682,11 @@ greendown_p <- ggplot((tavg_allyear_pcorr %>% filter(type == "green-down pace"))
   scale_shape_manual(
     name = "Significance", 
     values = c(21, 1),
-    labels = c("p < 0.05", "p > 0.05")   
+    labels = c("p <= 0.05", "p > 0.05")   
     ) +
   scale_size_manual(
     name = "Pre-season length",  
-    values = c(1.2, 2.5), 
+    values = c(1.2, 4), 
     labels = c("Others", "Optimal preseason length")
   ) +
   guides(
@@ -703,7 +720,7 @@ Then I conducted a variance decomposition analysis and compared the proportion o
 #| warning: false
 #| fig-cap: "Variance decomposition analysis for spatial and temporal effects"
 
-tavg_allyear_var <- readRDS("~/phenology-urban/data/proc/urban/NY/tavg_allyear_var.rds")
+tavg_allyear_var <- readRDS("~/phenology-urban/data/proc/urban/DV/tavg_allyear_var.rds")
 phe_types <- c("SOS", "EOS", "GreenUp", "GreenDown")
 all_genus <- unique(tavg_allyear_var$genus)
 results <- list()
@@ -879,8 +896,9 @@ variogram_summary <- variogram_sos %>%
 kable(variogram_summary, caption = "Fitted semivariogram model for each genus")
 ```
 
-Sph: 26, Mat: 22, Gau: 4, Exp: 4
-HT: Sph, Mat
+<!-- Sph: 26, Mat: 22, Gau: 4, Exp: 4 HT: Sph, Mat -->
+
+****
 
 ### 3.2 Spatial statistical model
 
@@ -922,236 +940,6 @@ where:
 -   *Independent Nugget Effect*: $$\epsilon(\mathbf{s}_i) \sim \text{N}(0, \tau^2)$$
 
     -   $\epsilon(\mathbf{s}_i, \mathbf{t})$ accounts for measurement error or small-scale variability.
-    
-**Model 2: (checked)**
-
-$$y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w(\mathbf{s}_i, \mathbf{t}) + \epsilon(\mathbf{s}_i, \mathbf{t})$$
-
-where:
-
--   *Fixed Effects*: same as above.
-
--   *Spatio-temporal Random Effect*: $$w(\mathbf{s}_i, \mathbf{t}) \sim \text{MVN}(\mathbf{0}, \mathbf{R}_{\mathbf{s}\mathbf{t}})$$
-    
-    -   $\mathbf{R}$ is the spatio-temporal correlation matrix defined by covariance function. The function format is the same.
-    
-    -   Instead, $D_{ij}$ is the distance using 3-dimension coordinate, (scaled_longitude, scaled_latitude, scaled_year).
-
--   *Independent Nugget Effect*: same as above.
-
-**Model 3: **
-
-$$y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w_t(\mathbf{s}_i) + \epsilon(\mathbf{s}_i, \mathbf{t})$$
-
-where:
-
--   *Fixed Effects*: same as above.
-
--   *Spatio-temporal Random Effect*: $$w_t(\mathbf{s}_i) \sim \text{MVN}(\mathbf{0}, \mathbf{R}_{\mathbf{t}})$$
-    
-    -   $\mathbf{R}_{\mathbf{t}}$ is fitted for each year. Or the parameters in covariance matrix, e.g., $\phi(\mathbf{t}_j) \sim \text{N}(0, \tau^2_{\phi})$
-
--   *Independent Nugget Effect*: same as above.
-
-**Model 4: **
-
-$$y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w(\mathbf{s}_i) + u(\mathbf{t}) + \epsilon(\mathbf{s}_i, \mathbf{t})$$
-
-where:
-
--   *Fixed Effects*: same as above.
-
--   *Spatially Correlated Random Effect*: $$w(\mathbf{s}_i) \sim \text{MVN}(\mathbf{0}, \mathbf{R})$$
-
-    -   $\mathbf{R}$ is the spatial correlation matrix defined by a covariance function:
-    
-    $$\mathbf{R}_{ij} = 
-    \begin{cases} 
-    0 \text{ or a very samll value} & \text{if } \mathbf{t}_{i} \neq \mathbf{t}_{j} \\
-    \text{follow covariance function}  & \text{otherwise}
-    \end{cases}$$
-
--   *Year-specific Random Effect*: same as above.
-
--   *Independent Nugget Effect*: same as above.
-
-##### 3.2.0 Simulation for canndidate models
-
-For model comparison, I simulated the data with the true slope of `Avg_temp` is **-2**. Both spatial variance (exp covariance) and temporal variance are included. Some records happen in the same location.
-
-```{r}
-#| label: fig-model_simulate
-#| include: true
-#| eval: false
-#| code-fold: false
-
-################ Make up the simulation data ################
-set.seed(2025)
-lon_range <- c(-74.25156, -73.70623)
-lat_range <- c(40.50458, 40.91093)
-N <- 200 
-lon <- runif(N, min = lon_range[1], max = lon_range[2])
-lat <- runif(N, min = lat_range[1], max = lat_range[2])
-
-years <- 2017:2023
-nyears <- length(years)
-year <- sample(years, N, replace = TRUE)
-
-# fix effects: intercept, tavg, precp, srad
-intercept <- 120
-tavg <- runif(N, 0, 25)
-precp <- runif(N, 0, 500)
-srad <- runif(N, 300, 450)
-
-beta <- c(intercept, -2, 0.05, 0.05)
-X <- cbind(1, tavg, precp, srad)
-
-# spatial effect
-sigma.sq <- 80
-phi <- 25
-spatial_effect <- numeric(N)
-
-for (y in years) {
-  year_idx <- which(year == y)
-  if (length(year_idx) > 1) {
-    lon_year <- lon[year_idx]
-    lat_year <- lat[year_idx]
-    dist_matrix_year <- as.matrix(dist(cbind(lon_year, lat_year)))
-    cov_matrix_year <- sigma.sq * exp(-phi * dist_matrix_year)
-    spatial_effect[year_idx] <- mvrnorm(1, mu = rep(0, length(year_idx)), Sigma = cov_matrix_year)
-  } else {
-    spatial_effect[year_idx] <- 0
-  }
-}
-
-# year effect
-year_effect <- rnorm(nyears, mean = 0, sd = 1)
-
-mu <- numeric(N)
-y <- numeric(N)
-tau <- 1 
-for (i in 1:N) {
-  year_idx <- which(years == year[i])
-  mu[i] <- X[i,] %*% beta + spatial_effect[i] + year_effect[year_idx]
-  y[i] <- rnorm(1, mean = mu[i], sd = sqrt(1/tau))
-}
-
-sim_data <- data.frame(
-  lon = lon,
-  lat = lat,
-  year = year,
-  AvgTemp_mean = tavg,
-  Sum_mm_sum = precp,
-  srad_mean = srad,
-  spatial_effect = spatial_effect,
-  doy = y
-)
-```
-
-
-
-```{r}
-#| label: fig-model_simulate_check
-#| include: true
-#| eval: true
-#| fig-height: 3
-#| fig-cap: "The distribution of posterior for Temp coeffeicent using simulated data."
-
-################ Result form Nimble using 4 model ################
-
-dir_path <- "~/phenology-urban/data/proc/urban/sp_model/"
-files <- list.files(dir_path, pattern = "^SIM.*Exp\\.rds$", full.names = TRUE)
-plots <- list()
-
-for (file in files) {
-  model_data <- readRDS(file)
-  genus <- sub(".*SIM_(.*?)_tavg_SOS_Exp\\.rds", "\\1", basename(file))
-  beta_label <- data.frame(Parameter = "beta[2]", Label = "AvgTemp")
-  param_data <- ggs(model_data$samples, par_labels = beta_label) %>%
-    filter(Parameter == "AvgTemp")
-  beta_median <- median(param_data$value)
-  beta_mean <- mean(param_data$value)
-  p <- param_data %>%
-    ggs_density() +
-    theme_bw() +
-    ggtitle(paste("Model:", genus)) +
-    theme(plot.title = element_text(hjust = 0.5)) +
-    annotate("text", x = beta_median, y = 0, label = paste0("Median: ", round(beta_median, 2)),vjust = -1.5, color = "red", size = 4) +
-    annotate("text", x = beta_mean, y = 2, label = paste0("Mean: ", round(beta_mean, 2)),vjust = -1.5, color = "red", size = 4)
-  plots[[genus]] <- p
-}
-
-combined_plot <- wrap_plots(plots, ncol = 2)
-combined_plot
-
-
-
-```
-```{r}
-#| label: fig-model_sen_check
-#| include: true
-#| eval: true
-#| fig-cap: "The distribution of posterior for Temp coeffeicent using simulated data and different covariance model."
-#| fig-subcap: 
-#|   - "Model 1: Spatial random effect & year random effect"
-#|   - "Model 2: Spatio-temporal random effect"
-
-
-################ Sensitivity to different covariance model ################
-
-dir_path <- "~/phenology-urban/data/proc/urban/sp_model/"
-
-files <- list.files(dir_path, pattern = "^SIM_sp_random.*\\.rds$", full.names = TRUE)
-plots <- list()
-
-for (file in files) {
-  model_data <- readRDS(file)
-  genus <- sub(".*SIM_(.*?)_tavg_SOS_(.*?)\\.rds", "\\2", basename(file))
-  
-  beta_label <- data.frame(Parameter = "beta[2]", Label = "AvgTemp")
-  param_data <- ggs(model_data$samples, par_labels = beta_label) %>%
-    filter(Parameter == "AvgTemp")
-  beta_median <- median(param_data$value)
-  beta_mean <- mean(param_data$value)
-  p <- param_data %>%
-    ggs_density() +
-    theme_bw() +
-    ggtitle(paste("Model:", genus)) +
-    theme(plot.title = element_text(hjust = 0.5)) +
-    annotate("text", x = beta_median, y = 0, label = paste0("Median: ", round(beta_median, 2)),vjust = -1.5, color = "red", size = 4) +
-    annotate("text", x = beta_mean, y = 2, label = paste0("Mean: ", round(beta_mean, 2)),vjust = -1.5, color = "red", size = 4)
-  plots[[genus]] <- p
-}
-
-combined_plot2 <- wrap_plots(plots, ncol = 2)
-combined_plot2
-
-files <- list.files(dir_path, pattern = "^SIM_joint.*\\.rds$", full.names = TRUE)
-plots <- list()
-
-for (file in files) {
-  model_data <- readRDS(file)
-  genus <- sub(".*SIM_(.*?)_tavg_SOS_(.*?)\\.rds", "\\2", basename(file))
-  
-  beta_label <- data.frame(Parameter = "beta[2]", Label = "AvgTemp")
-  param_data <- ggs(model_data$samples, par_labels = beta_label) %>%
-    filter(Parameter == "AvgTemp")
-  beta_median <- median(param_data$value)
-  beta_mean <- mean(param_data$value)
-  p <- param_data %>%
-    ggs_density() +
-    theme_bw() +
-    ggtitle(paste("Model:", genus)) +
-    theme(plot.title = element_text(hjust = 0.5)) +
-    annotate("text", x = beta_median, y = 0, label = paste0("Median: ", round(beta_median, 2)),vjust = -1.5, color = "red", size = 4) +
-    annotate("text", x = beta_mean, y = 2, label = paste0("Mean: ", round(beta_mean, 2)),vjust = -1.5, color = "red", size = 4)
-  plots[[genus]] <- p
-}
-
-combined_plot <- wrap_plots(plots, ncol = 2)
-combined_plot
-```
-
 
 
 ##### 3.2.1 Nimble model code (run in separate script)
@@ -1237,10 +1025,44 @@ Most genera showed negative association between temperature and the start of sea
 #| fig-height: 10
 #| fig-width: 10
 #| warning: false
-#| eval: false
+#| eval: true
 
 
 dir_path <- "~/phenology-urban/data/proc/urban/sp_model/year_random/"
+
+files <- list.files(dir_path, pattern = "^NY.*SOS\\.rds$", full.names = TRUE)
+plots <- list()
+
+for (file in files) {
+  model_data <- readRDS(file)
+  genus <- sub(".*NY_(.*?)_tavg_SOS\\.rds", "\\1", basename(file))
+  beta_label <- data.frame(Parameter = "beta[2]", Label = "AvgTemp")
+  param_data <- ggs(model_data$samples, par_labels = beta_label) %>%
+    filter(Parameter == "AvgTemp")
+  beta_median <- median(param_data$value)
+  p <- param_data %>%
+    ggs_density() +
+    theme_bw() +
+    ggtitle(paste("Genus:", genus)) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    annotate("text", x = beta_median, y = 0, label = paste0("Median: ", round(beta_median, 2)),vjust = -1.5, color = "red", size = 4)
+  plots[[genus]] <- p
+}
+
+combined_plot <- wrap_plots(plots, ncol = 5)
+combined_plot
+```
+
+```{r}
+#| label: fig-ny_sos_tavg_modle2
+#| include: true
+#| fig-cap: "Model2"
+#| fig-height: 10
+#| fig-width: 10
+#| warning: false
+#| eval: false
+
+
 dir_path <- "~/phenology-urban/data/proc/urban/sp_model/sp_temp/"
 
 files <- list.files(dir_path, pattern = "^NY.*SOS\\.rds$", full.names = TRUE)
@@ -1262,9 +1084,8 @@ for (file in files) {
   plots[[genus]] <- p
 }
 
-combined_plot2 <- wrap_plots(plots, ncol = 3)
-combined_plot1
-combined_plot2
+combined_plot <- wrap_plots(plots, ncol = 3)
+combined_plot
 ```
 
 ##### 3.2.3 EOS in NYC
@@ -1385,20 +1206,22 @@ combined_plot3
 
 ##### 3.2.6 Comparison
 
-The genus Alnus has fewer data points, leading to non-convergence of the posterior distribution. So it is ignored here.
+**Within NY city**
+
+The genus Alnus has fewer data points, leading to non-convergence of the posterior distribution. So it is ignored here. 
+
+Trees indeed respond to temperature variations within the city. The magnitude and direction of their responses vary among genera. The response of SOS is relatively consistent, with a 1- to 4-day advancement as temperature increases 1 degree C.
 
 ```{r}
 #| label: fig-ny_tavg_comp
 #| include: true
 #| fig-width: 8
-#| fig-cap: 
-#|   - "The distribution of the posterior of regression coefficients for `Temp~avg~` for each genus in New York city (Thick line: 90% CI, thin line: 95% CI, point: mean value)."
-#|   - "The distribution of the posterior of regression coefficients for `Temp~avg~` for each genus in New York city (Line: 95% CI, point: mean value)."
+#| fig-cap: "The distribution of the posterior of regression coefficients for `Temp~avg~` for each genus in New York city (Thick line: 90% CI, thin line: 95% CI, point: mean value)."
 #| warning: false
-#| eval: false
+#| eval: true
 
 
-dir_path <- "~/phenology-urban/data/proc/urban/sp_model/"
+dir_path <- "~/phenology-urban/data/proc/urban/sp_model/year_random/"
 SOS_files <- list.files(dir_path, pattern = "^NY.*SOS\\.rds$", full.names = TRUE)
 EOS_files <- list.files(dir_path, pattern = "^NY.*EOS\\.rds$", full.names = TRUE)
 Gup_files <- list.files(dir_path, pattern = "^NY.*Up\\.rds$", full.names = TRUE)
@@ -1459,10 +1282,11 @@ combined_param_data <- combined_param_sos_data %>%
   bind_rows(combined_param_gdown_data %>% mutate(phe_type = "GreenDown"))
 
 # ggmcmc
-list(SOS=combined_param_sos_data, EOS=combined_param_eos_data, GreenUp=combined_param_gup_data, GreenDown = combined_param_gdown_data) %>% 
+list(SOS=combined_param_sos_data, EOS=combined_param_eos_data, GreenUp=combined_param_gup_data, GreenDown = combined_param_gdown_data) %>%
   ggs_caterpillar(thick_ci = c(0.05, 0.95),
                   thin_ci = c(0.025, 0.975),
                   horizontal = FALSE) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red", alpha =0.5) +
   theme_classic() +
   labs(y = "Genus",
        x = "The posterior of regression coefficients for Tavg") +
@@ -1472,33 +1296,95 @@ list(SOS=combined_param_sos_data, EOS=combined_param_eos_data, GreenUp=combined_
     axis.text.x = element_text(size = 10, angle = 45, hjust = 1),
     axis.text.y = element_text(size = 10)
   )
+```
 
+
+**Across cities**
+
+For relatively convergent results, species responses are more similar across different cities.
+Even for the same genus, the response to temperature varies across different cities.
+
+
+```{r}
+#| label: fig-city_comp_sos
+#| include: true
+#| fig-cap: "The distribution of the posterior of regression coefficients for `Temp~avg~` on `SOS` for each genus (Line: 95% CI, point: mean value)."
+#| warning: false
+#| eval: true
+
+
+dir_path <- "~/phenology-urban/data/proc/urban/sp_model/year_random/"
+SOS_files <- list.files(dir_path, pattern = "^NY.*SOS\\.rds$", full.names = TRUE)
+EOS_files <- list.files(dir_path, pattern = "^DV.*SOS\\.rds$", full.names = TRUE)
+Gup_files <- list.files(dir_path, pattern = "^HT.*SOS\\.rds$", full.names = TRUE)
+
+param_sos_list <- list()
+for (i in seq_along(SOS_files)) {
+  file <- SOS_files[i]
+  model_data <- readRDS(file)
+  genus <- sub(".*NY_(.*?)_tavg_(.*?)\\.rds", "\\1", basename(file))
+  beta_label <- data.frame(Parameter = "beta[2]", Label = genus)
+  param_data <- ggs(model_data$samples, par_labels = beta_label) %>%
+    filter(Parameter == !!genus)
+  param_sos_list[[i]] <- param_data
+}
+
+param_eos_list <- list()
+for (i in seq_along(EOS_files)) {
+  file <- EOS_files[i]
+  model_data <- readRDS(file)
+  genus <- sub(".*DV_(.*?)_tavg_(.*?)\\.rds", "\\1", basename(file))
+  beta_label <- data.frame(Parameter = "beta[2]", Label = genus)
+  param_data <- ggs(model_data$samples, par_labels = beta_label) %>%
+    filter(Parameter == !!genus)
+  param_eos_list[[i]] <- param_data
+}
+
+param_gup_list <- list()
+for (i in seq_along(Gup_files)) {
+  file <- Gup_files[i]
+  model_data <- readRDS(file)
+  genus <- sub(".*HT_(.*?)_tavg_(.*?)\\.rds", "\\1", basename(file))
+  beta_label <- data.frame(Parameter = "beta[2]", Label = genus)
+  param_data <- ggs(model_data$samples, par_labels = beta_label) %>%
+    filter(Parameter == !!genus)
+  param_gup_list[[i]] <- param_data
+}
+
+combined_param_sos_data <- bind_rows(param_sos_list) %>% filter(Parameter != "Alnus")
+combined_param_eos_data <- bind_rows(param_eos_list) %>% filter(Parameter != "Alnus")
+combined_param_gup_data <- bind_rows(param_gup_list) %>% filter(Parameter != "Alnus")
+combined_param_data <- combined_param_sos_data %>%
+  mutate(City = "NY") %>%
+  bind_rows(combined_param_eos_data %>% mutate(City = "DV"))%>%
+  bind_rows(combined_param_gup_data %>% mutate(City = "HT"))
 
 
 ## geom_linerange
 summary_data <- combined_param_data %>%
-  group_by(Parameter, phe_type) %>%
+  group_by(Parameter, City) %>%
   summarise(
     mean_value = mean(value, na.rm = TRUE),
     lower = quantile(value, probs = 0.025),
     upper = quantile(value, probs = 0.975),
     .groups = "drop"
   )
-summary_data$phe_type <- factor(summary_data$phe_type, levels = c("SOS", "GreenUp", "EOS", "GreenDown"))
+summary_data$City <- factor(summary_data$City, levels = c("NY", "DV", "HT"))
 
-ggplot(summary_data, aes(x = Parameter, y = mean_value, color = phe_type)) +
+ggplot(summary_data, aes(x = Parameter, y = mean_value, color = City)) +
   geom_point(size = 3, position = position_dodge(width = 0.5)) +  
   geom_linerange(aes(ymin = lower, ymax = upper), size = 0.5, 
                  position = position_dodge(width = 0.5)) + 
-  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red", alpha =0.5) +
   theme_classic() +
   labs(
+    title = "The response of SOS to Temp",
     x = "Genus",
     y = "The posterior of regression coefficients for Tavg",
-    color = "Phenological parameter"
+    color = "City"
   ) +
   scale_color_manual(
-    values = c("SOS" = "darkgreen", "GreenUp" = "darkolivegreen3", "EOS" = "chocolate4",  "GreenDown" = "coral")
+    values = c("NY" = "darkolivegreen4", "HT" = "navyblue", "DV" = "coral")
     #coral/chocolate
   ) +
   theme(
@@ -1507,37 +1393,228 @@ ggplot(summary_data, aes(x = Parameter, y = mean_value, color = phe_type)) +
     axis.text.y = element_text(size = 10)
   )
 
-# combined_param_data<- bind_rows(param_data_list) 
-# p <- ggplot(combined_param_data, aes(x = Parameter, y = value, color = phe_type)) +
-#   geom_boxplot(outlier.shape = NA, width = 0.5) + 
-#   theme_minimal() +
-#   labs(
-#     x = "Genus",
-#     y = "The distribution of the posterior of regression coefficients",
-#     color = "Phenological Type"
-#   ) +
-#   theme(
-#     axis.title = element_text(size = 14),
-#     axis.text.x = element_text(size = 12, angle = 45, hjust = 1),
-#     axis.text.y = element_text(size = 12),
-#     plot.title = element_text(size = 16, face = "bold", hjust = 0.5)
-#   )
 
 ```
 
+
+##### 3.2.7 Simulation for model's validation
+
+Potential issue:
+
+  - [x] The variance among years may be captured by the spatial covariance.
+  
+  - [x] The covariance matrix is incorrectly specified.
+
+
+In this step, I primarily aimed to simulate data to verify whether the model is feasible and whether MCMC can effectively capture the model parameters and assess uncertainty. Additionally, I examined whether the method can still detect signals when an incorrect covariance matrix is specified.
+
+I simulated the data with the true slope of `Avg_temp` is **-2**. Both spatial covariance (exp covariance) and temporal variance are included, and spatial covariance just happened among the records from the same year. Some records happen in the same location.
+
+**The results demonstrate that this modeling approach is feasible, and it remains robust even when the model specification is incorrect.**
+
+```{r}
+#| label: fig-model_simulate
+#| include: true
+#| eval: false
+#| code-fold: false
+
+################ Make up the simulation data ################
+set.seed(2025)
+lon_range <- c(-74.25156, -73.70623)
+lat_range <- c(40.50458, 40.91093)
+N <- 200 
+lon <- runif(N, min = lon_range[1], max = lon_range[2])
+lat <- runif(N, min = lat_range[1], max = lat_range[2])
+
+years <- 2017:2023
+nyears <- length(years)
+year <- sample(years, N, replace = TRUE)
+
+# fix effects: intercept, tavg, precp, srad
+intercept <- 120
+tavg <- runif(N, 0, 25)
+precp <- runif(N, 0, 500)
+srad <- runif(N, 300, 450)
+
+beta <- c(intercept, -2, 0.05, 0.05)
+X <- cbind(1, tavg, precp, srad)
+
+# spatial effect
+sigma.sq <- 80
+phi <- 25
+spatial_effect <- numeric(N)
+
+for (y in years) {
+  year_idx <- which(year == y)
+  if (length(year_idx) > 1) {
+    lon_year <- lon[year_idx]
+    lat_year <- lat[year_idx]
+    dist_matrix_year <- as.matrix(dist(cbind(lon_year, lat_year)))
+    cov_matrix_year <- sigma.sq * exp(-phi * dist_matrix_year)
+    spatial_effect[year_idx] <- mvrnorm(1, mu = rep(0, length(year_idx)), Sigma = cov_matrix_year)
+  } else {
+    spatial_effect[year_idx] <- 0
+  }
+}
+
+# year effect
+year_effect <- rnorm(nyears, mean = 0, sd = 1)
+
+mu <- numeric(N)
+y <- numeric(N)
+tau <- 1 
+for (i in 1:N) {
+  year_idx <- which(years == year[i])
+  mu[i] <- X[i,] %*% beta + spatial_effect[i] + year_effect[year_idx]
+  y[i] <- rnorm(1, mean = mu[i], sd = sqrt(1/tau))
+}
+
+sim_data <- data.frame(
+  lon = lon,
+  lat = lat,
+  year = year,
+  AvgTemp_mean = tavg,
+  Sum_mm_sum = precp,
+  srad_mean = srad,
+  spatial_effect = spatial_effect,
+  doy = y
+)
+```
+
+```{r}
+#| label: fig-model_simulate_check
+#| include: false
+#| fig-height: 3
+#| fig-cap: "The distribution of posterior for Temp coeffeicent using simulated data."
+#| eval: false
+
+################ Result form Nimble using 4 model ################
+
+dir_path <- "~/phenology-urban/data/proc/urban/sp_model/"
+files <- list.files(dir_path, pattern = "^SIM.*Exp\\.rds$", full.names = TRUE)
+plots <- list()
+
+for (file in files) {
+  model_data <- readRDS(file)
+  genus <- sub(".*SIM_(.*?)_tavg_SOS_Exp\\.rds", "\\1", basename(file))
+  beta_label <- data.frame(Parameter = "beta[2]", Label = "AvgTemp")
+  param_data <- ggs(model_data$samples, par_labels = beta_label) %>%
+    filter(Parameter == "AvgTemp")
+  beta_median <- median(param_data$value)
+  beta_mean <- mean(param_data$value)
+  p <- param_data %>%
+    ggs_density() +
+    theme_bw() +
+    ggtitle(paste("Model:", genus)) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    annotate("text", x = beta_median, y = 0, label = paste0("Median: ", round(beta_median, 2)),vjust = -1.5, color = "red", size = 4) +
+    annotate("text", x = beta_mean, y = 2, label = paste0("Mean: ", round(beta_mean, 2)),vjust = -1.5, color = "red", size = 4)
+  plots[[genus]] <- p
+}
+
+combined_plot <- wrap_plots(plots, ncol = 2)
+combined_plot
+```
+
+```{r}
+#| label: fig-model_sen_check
+#| include: true
+#| eval: true
+#| fig-cap: "The distribution of posterior for Temp coeffeicent using simulated data and different covariance model."
+#| fig-subcap: 
+#|   - "Model 1: Spatial random effect & year random effect"
+#|   - "Model 2: Spatio-temporal random effect"
+
+
+################ Sensitivity to different covariance model ################
+
+dir_path <- "~/phenology-urban/data/proc/urban/sp_model/"
+
+files <- list.files(dir_path, pattern = "^SIM_sp_random.*\\.rds$", full.names = TRUE)
+plots <- list()
+
+for (file in files) {
+  model_data <- readRDS(file)
+  genus <- sub(".*SIM_(.*?)_tavg_SOS_(.*?)\\.rds", "\\2", basename(file))
+  
+  beta_label <- data.frame(Parameter = "beta[2]", Label = "AvgTemp")
+  param_data <- ggs(model_data$samples, par_labels = beta_label) %>%
+    filter(Parameter == "AvgTemp")
+  beta_median <- median(param_data$value)
+  beta_mean <- mean(param_data$value)
+  p <- param_data %>%
+    ggs_density() +
+    theme_bw() +
+    ggtitle(paste("Model:", genus)) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    annotate("text", x = beta_median, y = 0, label = paste0("Median: ", round(beta_median, 2)),vjust = -1.5, color = "red", size = 4) +
+    annotate("text", x = beta_mean, y = 2, label = paste0("Mean: ", round(beta_mean, 2)),vjust = -1.5, color = "red", size = 4)
+  plots[[genus]] <- p
+}
+
+combined_plot2 <- wrap_plots(plots, ncol = 2)
+combined_plot2
+# 
+# files <- list.files(dir_path, pattern = "^SIM_joint.*\\.rds$", full.names = TRUE)
+# plots <- list()
+# 
+# for (file in files) {
+#   model_data <- readRDS(file)
+#   genus <- sub(".*SIM_(.*?)_tavg_SOS_(.*?)\\.rds", "\\2", basename(file))
+#   
+#   beta_label <- data.frame(Parameter = "beta[2]", Label = "AvgTemp")
+#   param_data <- ggs(model_data$samples, par_labels = beta_label) %>%
+#     filter(Parameter == "AvgTemp")
+#   beta_median <- median(param_data$value)
+#   beta_mean <- mean(param_data$value)
+#   p <- param_data %>%
+#     ggs_density() +
+#     theme_bw() +
+#     ggtitle(paste("Model:", genus)) +
+#     theme(plot.title = element_text(hjust = 0.5)) +
+#     annotate("text", x = beta_median, y = 0, label = paste0("Median: ", round(beta_median, 2)),vjust = -1.5, color = "red", size = 4) +
+#     annotate("text", x = beta_mean, y = 2, label = paste0("Mean: ", round(beta_mean, 2)),vjust = -1.5, color = "red", size = 4)
+#   plots[[genus]] <- p
+# }
+# 
+# combined_plot <- wrap_plots(plots, ncol = 2)
+# combined_plot
+```
+
+**But one more issue**: Since the tree points are clustered around the weather station (especially in NY), the fitted spatial covariance might be localized. 
+
 ## 4 Conclusion and next step
 
--   The preseason length varies significantly among genera.
+### Conclusion
 
--   Within the city, the relationship between phenology and temperature is still significant.
+-   Optimal preseason length for phenology varies among genera.
+
+-   Within the city, the relationship between phenology and temperature is still significant. Trees indeed respond to temperature variations, result in phenology variation
+
     -   The warmer the preseason temperature, the earlier the start of season, considering the spatial autocorrelation of phenology in the model.
-    -   As for green-up pace, for most genera, the warmer preseason leads to faster green-up pace. 
-    -   The response of end of season to temperature shows great variation among genera, including both the magnitude and direction.
-    -   As for green-down pace, for most genera, the warmer preseason leads to faster green-down pace. 
-    -   The precipitation has no significant impact.
+    -   As for fall phenology, The magnitude and direction of trees' responses to temperature vary among genera.
 
-Next steps:
+-   Across cities, same genus has different response to temperature.
 
--   Future steps:
-    -   Test sensitivity by changing buffer size.
-    -   Add more taxa (data in DataDen and download latest PS images)
+
+### Next steps:
+
+-   Diagnistic for model
+  
+    -   Plot the spatial variance term (smoothness/roughness)
+    -   Check the variogram, check the range (should be large to capture wider variance), and force it to be large
+
+-   Scale up
+
+    -   Cities
+    -   Genera
+
+-   Marginal prediction
+
+    -   Prediction results, show their spatial variance
+    -   Climate at weather points / interpolated climate
+    
+-   Sensitivity
+
+    -   How about use buffer size
+    -   Use the Daymet climate infomation directly

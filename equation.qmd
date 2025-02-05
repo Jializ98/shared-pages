@@ -1,0 +1,166 @@
+---
+title: "test"
+format: html
+editor: visual
+---
+
+**Model 1: (current use)**
+
+$$y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w(\mathbf{s}_i) + u(\mathbf{t}) + \epsilon(\mathbf{s}_i, \mathbf{t})$$
+
+where:
+
+$y(\mathbf{s}_i, \mathbf{t})$ is the response variable at location $\mathbf{s}_i$ and time $\mathbf{t}$.
+
+-   *Fixed Effects*: $$\mu(\mathbf{s}_i,\mathbf{t}) = \mathbf{X}_{\mathbf{s}_i,\mathbf{t}} \boldsymbol{\beta}$$
+
+    -   $\mathbf{X}_{\mathbf{s}_i,\mathbf{t}} = [1, \text{AvgTemp}_{\mathbf{s}_i,\mathbf{t}}, \text{Precp}_{\mathbf{s}_i,\mathbf{t}}, \text{srad}_{\mathbf{s}_i,\mathbf{t}}]$ is the design matrix of predictors.
+    -   $\boldsymbol{\beta} = [\beta_0, \beta_1, \beta_2, \beta_3]$ are the regression coefficients for the intercept and covariates.
+
+-   *Spatially Correlated Random Effect*: $$w(\mathbf{s}_i) \sim \text{MVN}(\mathbf{0}, \mathbf{R})$$
+
+    -   $\mathbf{R}$ is the spatial correlation matrix defined by a covariance function:
+
+    -   Matérn Covariance Function (if selected): $$\mathbf{R}_{ij} = \sigma^2 \cdot \frac{2^{1-\nu}}{\Gamma(\nu)} \left(\frac{\sqrt{2\nu} D_{ij}}{\rho}\right)^\nu K_\nu\left(\frac{\sqrt{2\nu} D_{ij}}{\rho}\right)$$
+
+    -   Exponential Covariance Function (if selected): $$\mathbf{R}_{ij} = \sigma^2 \cdot \exp(-\phi D_{ij})$$
+
+    -   Gaussian Covariance Function (if selected): $$\mathbf{R}_{ij} = \sigma^2 \cdot \exp(-\phi D_{ij}^2)$$
+
+    -   Spherical Covariance Function (if selected):
+
+    $$\mathbf{R}_{ij} =
+            \begin{cases}
+            \sigma^2 \cdot \left(1 - \frac{3 D_{ij}}{2\rho} + \frac{D_{ij}^3}{2\rho ^3}\right), & D_{ij} \leq \rho \\
+            0, & D_{ij} > \rho
+            \end{cases}$$
+
+-   *Year-specific Random Effect*: $$u(\mathbf{t}) \sim \text{N}(0, \tau^2_{\mathbf{t}})$$
+
+    -   $u_{\mathbf{t}}$ captures year-to-year variability, with $\tau^2_{\mathbf{t}}$ being the variance of the year effect.
+
+-   *Independent Nugget Effect*: $$\epsilon(\mathbf{s}_i) \sim \text{N}(0, \tau^2)$$
+
+    -   $\epsilon(\mathbf{s}_i, \mathbf{t})$ accounts for measurement error or small-scale variability.
+
+**Model 2: (checked)**
+
+$$y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w(\mathbf{s}_i, \mathbf{t}) + \epsilon(\mathbf{s}_i, \mathbf{t})$$
+
+where:
+
+-   *Fixed Effects*: same as above.
+
+-   *Spatio-temporal Random Effect*: $$w(\mathbf{s}_i, \mathbf{t}) \sim \text{MVN}(\mathbf{0}, \mathbf{R}_{\mathbf{s}\mathbf{t}})$$
+
+    -   $\mathbf{R}$ is the spatio-temporal correlation matrix defined by covariance function. The function format is the same.
+
+    -   Instead, $D_{ij}$ is the distance using 3-dimension coordinate, (scaled_longitude, scaled_latitude, scaled_year).
+
+-   *Independent Nugget Effect*: same as above.
+
+**Model 3:**
+
+$$y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w_t(\mathbf{s}_i) + \epsilon(\mathbf{s}_i, \mathbf{t})$$
+
+where:
+
+-   *Fixed Effects*: same as above.
+
+-   *Spatio-temporal Random Effect*: $$w_t(\mathbf{s}_i) \sim \text{MVN}(\mathbf{0}, \mathbf{R}_{\mathbf{t}})$$
+
+    -   $\mathbf{R}_{\mathbf{t}}$ is fitted for each year. Or the parameters in covariance matrix, e.g., $\phi(\mathbf{t}_j) \sim \text{N}(0, \tau^2_{\phi})$
+
+-   *Independent Nugget Effect*: same as above.
+
+**Model 4:**
+
+$$y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w(\mathbf{s}_i) + u(\mathbf{t}) + \epsilon(\mathbf{s}_i, \mathbf{t})$$
+
+where:
+
+-   *Fixed Effects*: same as above.
+
+-   *Spatially Correlated Random Effect*: $$w(\mathbf{s}_i) \sim \text{MVN}(\mathbf{0}, \mathbf{R})$$
+
+    -   $\mathbf{R}$ is the spatial correlation matrix defined by a covariance function:
+
+    $$\mathbf{R}_{ij} = 
+    \begin{cases} 
+    0 \text{ or a very samll value} & \text{if } \mathbf{t}_{i} \neq \mathbf{t}_{j} \\
+    \text{follow covariance function}  & \text{otherwise}
+    \end{cases}$$
+
+-   *Year-specific Random Effect*: same as above.
+
+-   *Independent Nugget Effect*: same as above.
+
+**Prior distribution** $$ \tau \sim \text{Gamma}(0.001, 0.001) $$ $$ \sigma^2 \sim \text{Inverse-Gamma}(2.5, 120) $$ $$ \phi \sim \text{Uniform}\left(5, 50\right) $$ $$ \tau_{\mathbf{t}} \sim \text{Inverse-Gamma}(2.001, 0.667) $$ $$ \text{range} \sim \text{Uniform}(0, 1) $$ $$\nu \sim \text{Uniform}(0.5, 5) $$ $$\beta_j \sim \text{Normal}(0, 1000) \quad \text{for all } j $$
+
+**Initial values**
+
+$$\beta_j = 0$$ $$ \tau = 1 $$ $$ \sigma^2 = 80$$ $$ \phi = 25 $$ $$ \tau_{\mathbf{t}} = 1 $$ $$ \text{range} = 0.5 $$ $$ \nu = 1 $$
+
+-   **Yearly effects**:\
+    All yearly random effects are initialized at zero:\
+    \$ \text{year\_effect}\_q = 0 ), for all years ( q ).
+    
+    
+    
+    
+    
+    
+## Candidate model
+
+
+**Model 2: Use Spatio-temporal Random Effect**
+
+$$y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w(\mathbf{s}_i, \mathbf{t}) + \epsilon(\mathbf{s}_i, \mathbf{t})$$
+
+where:
+
+-   *Fixed Effects*: same as above.
+
+-   *Spatio-temporal Random Effect*: $$w(\mathbf{s}_i, \mathbf{t}) \sim \text{MVN}(\mathbf{0}, \mathbf{R}_{\mathbf{s}\mathbf{t}})$$
+
+    -   $\mathbf{R}$ is the spatio-temporal correlation matrix defined by covariance function. The function format is the same.
+
+    -   Instead, $D_{ij}$ is the distance using 3-dimension coordinate, (scaled_longitude, scaled_latitude, scaled_year).
+
+-   *Independent Nugget Effect*: same as above.
+
+**Model 3:**
+
+$$y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w_t(\mathbf{s}_i) + \epsilon(\mathbf{s}_i, \mathbf{t})$$
+
+where:
+
+-   *Fixed Effects*: same as above.
+
+-   *Spatio-temporal Random Effect*: $$w_t(\mathbf{s}_i) \sim \text{MVN}(\mathbf{0}, \mathbf{R}_{\mathbf{t}})$$
+
+    -   $\mathbf{R}_{\mathbf{t}}$ is fitted for each year. Or the parameters in covariance matrix, e.g., $\phi(\mathbf{t}_j) \sim \text{N}(0, \tau^2_{\phi})$
+
+-   *Independent Nugget Effect*: same as above.
+
+**Model 4:**
+
+$$y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w(\mathbf{s}_i) + u(\mathbf{t}) + \epsilon(\mathbf{s}_i, \mathbf{t})$$
+
+where:
+
+-   *Fixed Effects*: same as above.
+
+-   *Spatially Correlated Random Effect*: $$w(\mathbf{s}_i) \sim \text{MVN}(\mathbf{0}, \mathbf{R})$$
+
+    -   $\mathbf{R}$ is the spatial correlation matrix defined by a covariance function:
+
+    $$\mathbf{R}_{ij} = 
+    \begin{cases} 
+    0 \text{ or a very samll value} & \text{if } \mathbf{t}_{i} \neq \mathbf{t}_{j} \\
+    \text{follow covariance function}  & \text{otherwise}
+    \end{cases}$$
+
+-   *Year-specific Random Effect*: same as above.
+
+-   *Independent Nugget Effect*: same as above.
