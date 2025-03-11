@@ -429,7 +429,7 @@ So far, we have collected the phenology records and preseason climate informatio
 
 ```{r}
 #| label: data_summary
-#| fig-cap: "Distribution of partial correlation coefficient and preseason length, calculated by Temp~avg~"
+#| fig-cap: "The variation range of phenology (e.g., `SOS`) and preseason temperature (`AvgTemp`) in different cities"
 #| warning: false
 #| fig-width: 10
 #| fig-height: 10
@@ -677,7 +677,7 @@ Most genera showed negative association between temperature and the start of sea
 #| fig-height: 8
 #| warning: false
 #| eval: true
-#| fig-cap: "The density of the posterior distribution of regression coefficients for `Temp~avg~` with `SOS` as the response variable for each genus in New York city."
+#| fig-cap: "The density of the posterior distribution of regression coefficients for `Temp~avg~` with `SOS` as the response variable for each genus in New York city, generated via MCMC."
 
 dir_path <- "~/phenology-urban/data/proc/urban/sp_model/year_random/"
 
@@ -713,7 +713,7 @@ As for the spatial field, only Salix seems to be ideal. Other genera exhibit eit
 #| fig-height: 7
 #| warning: false
 #| eval: true
-#| fig-cap: "Spatial fields"
+#| fig-cap: "Spatial fields, generated via MCMC"
 
 spherical_covariance <- function(d, range, sigma.sq) {
   result <- matrix(0, nrow = nrow(d), ncol = ncol(d))
@@ -973,7 +973,7 @@ Compared to the previous MCMC results, these spatial fields appear to be smoothe
 #| fig-height: 8
 #| warning: false
 #| eval: true
-#| fig-cap: "The density of the posterior distribution of regression coefficients for `Temp~avg~` with `SOS` as the response variable for each genus in New York city."
+#| fig-cap: "The density of the posterior distribution of regression coefficients for `Temp~avg~` with `SOS` as the response variable for each genus in New York city, generated via INLA."
 
 dir_path <- "~/phenology-urban/data/proc/urban/sp_model/inla_year_random/"
 city = "NY"
@@ -1069,7 +1069,7 @@ combined_plot_tavg
 #| fig-height: 8
 #| warning: false
 #| eval: true
-#| fig-cap: "Spatial fields"
+#| fig-cap: "Spatial fields generated via INLA."
 
 combined_plot_semi <- wrap_plots(plots_semi, ncol = 5)
 combined_plot_mean <- wrap_plots(plots_mean, ncol = 5)
@@ -1219,7 +1219,7 @@ More appropriate way to prepresent heterogeneity?
 #| label: fig-ny_predict
 #| include: true
 #| fig-width: 10
-#| fig-cap: "Prediction for the SOS of Acer in 2023 in New York city."
+#| fig-cap: "Prediction for the `SOS` of Acer in 2023 in New York city. The prediction are made at the weather station."
 #| warning: false
 #| eval: true
 
@@ -1864,7 +1864,7 @@ coef_summary_plot
 
 -   Across cities, some pattern noticed.
 
-### Next steps:
+### Next steps
 
 -   **What can the urban phenology heterogenity be used for?** - Goal
 
