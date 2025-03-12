@@ -964,7 +964,7 @@ res <- inla(formula,
 
 As for the INLA model, the coefficients do not show significant differences from the MCMC model, with most genera showed negative association between temperature and the start of season.
 
-Compared to the previous MCMC results, these spatial fields appear to be smoother overall, with gradual transitions rather than sharp local variations.Some genera (Ulmus, Alnus) have fewer high/low value clusters due to fewer observations.
+Why so convergent? INLA first finds the Maximum A Posteriori (MAP) estimate, which is the highest point of the posterior distribution. Then it uses Laplace Approximation, which inherently assumes that the posterior distribution is approximately normal near its peak (the MAP estimate).
 
 ```{r}
 #| label: fig-ny_sos_tavg_coef
@@ -1061,6 +1061,8 @@ for (file in files) {
 combined_plot_tavg <- wrap_plots(plots_tavg, ncol = 5)
 combined_plot_tavg
 ```
+
+Compared to the previous MCMC results, these spatial fields appear to be smoother overall, with gradual transitions rather than sharp local variations.Some genera (Ulmus, Alnus) have fewer high/low value clusters due to fewer observations.
 
 ```{r}
 #| label: fig-ny_sos_tavg_sp
