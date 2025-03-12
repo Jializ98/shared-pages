@@ -1149,7 +1149,7 @@ For EOS, the difference among cities is the most obvious. Almost all genera in N
 
 For GreenUp, most genera had a positive association.
 
-For GreenDown, almost all genera in DV and NY had a negative association, while most genera in ST and HT had a negative association.
+For GreenDown, almost all genera in DV and NY had a negative association, while most genera in ST and HT had a positive association.
 
 ```{r}
 #| label: fig-city_comp
@@ -1862,9 +1862,9 @@ coef_summary_plot
 
 -   Optimal preseason length for phenology varies among genera.
 
--   Within the city, trees indeed respond to temperature variations, result in phenology variation
+-   Within the city, trees indeed respond to temperature variation, result in phenology variation
 
--   Across cities, some pattern noticed.
+-   Across cities, some variation patterns noticed.
 
 ### Next steps
 
