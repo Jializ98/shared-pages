@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>test</title>
+<title>Potential model</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -111,7 +111,7 @@ window.Quarto = {
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">test</h1>
+<h1 class="title">Potential model</h1>
 </div>
 
 
@@ -160,7 +160,7 @@ window.Quarto = {
 <li><span class="math inline">\(\epsilon(\mathbf{s}_i, \mathbf{t})\)</span> accounts for measurement error or small-scale variability.</li>
 </ul></li>
 </ul>
-<p><strong>Model 2: (checked)</strong></p>
+<p><strong>Model 2:</strong></p>
 <p><span class="math display">\[y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w(\mathbf{s}_i, \mathbf{t}) + \epsilon(\mathbf{s}_i, \mathbf{t})\]</span></p>
 <p>where:</p>
 <ul>
@@ -208,47 +208,23 @@ window.Quarto = {
 All yearly random effects are initialized at zero:<br>
 $ _q = 0 ), for all years ( q ).</li>
 </ul>
-<section id="candidate-model" class="level2">
-<h2 class="anchored" data-anchor-id="candidate-model">Candidate model</h2>
-<p><strong>Model 2: Use Spatio-temporal Random Effect</strong></p>
-<p><span class="math display">\[y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w(\mathbf{s}_i, \mathbf{t}) + \epsilon(\mathbf{s}_i, \mathbf{t})\]</span></p>
-<p>where:</p>
+<section id="candidate-package" class="level2">
+<h2 class="anchored" data-anchor-id="candidate-package">Candidate package</h2>
+<p><strong><code>nimble</code></strong></p>
 <ul>
-<li><p><em>Fixed Effects</em>: same as above.</p></li>
-<li><p><em>Spatio-temporal Random Effect</em>: <span class="math display">\[w(\mathbf{s}_i, \mathbf{t}) \sim \text{MVN}(\mathbf{0}, \mathbf{R}_{\mathbf{s}\mathbf{t}})\]</span></p>
-<ul>
-<li><p><span class="math inline">\(\mathbf{R}\)</span> is the spatio-temporal correlation matrix defined by covariance function. The function format is the same.</p></li>
-<li><p>Instead, <span class="math inline">\(D_{ij}\)</span> is the distance using 3-dimension coordinate, (scaled_longitude, scaled_latitude, scaled_year).</p></li>
-</ul></li>
-<li><p><em>Independent Nugget Effect</em>: same as above.</p></li>
+<li>MCMC algorithm.</li>
+<li>Flexible and clear for covariance definition.</li>
 </ul>
-<p><strong>Model 3:</strong></p>
-<p><span class="math display">\[y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w_t(\mathbf{s}_i) + \epsilon(\mathbf{s}_i, \mathbf{t})\]</span></p>
-<p>where:</p>
+<p><strong><code>INLA</code></strong></p>
 <ul>
-<li><p><em>Fixed Effects</em>: same as above.</p></li>
-<li><p><em>Spatio-temporal Random Effect</em>: <span class="math display">\[w_t(\mathbf{s}_i) \sim \text{MVN}(\mathbf{0}, \mathbf{R}_{\mathbf{t}})\]</span></p>
-<ul>
-<li><span class="math inline">\(\mathbf{R}_{\mathbf{t}}\)</span> is fitted for each year. Or the parameters in covariance matrix, e.g., <span class="math inline">\(\phi(\mathbf{t}_j) \sim \text{N}(0, \tau^2_{\phi})\)</span></li>
-</ul></li>
-<li><p><em>Independent Nugget Effect</em>: same as above.</p></li>
+<li>INLA algorithm.</li>
+<li>Fixed covariance definition.</li>
 </ul>
-<p><strong>Model 4:</strong></p>
-<p><span class="math display">\[y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w(\mathbf{s}_i) + u(\mathbf{t}) + \epsilon(\mathbf{s}_i, \mathbf{t})\]</span></p>
-<p>where:</p>
+<p><strong><code>spBayes</code></strong></p>
 <ul>
-<li><p><em>Fixed Effects</em>: same as above.</p></li>
-<li><p><em>Spatially Correlated Random Effect</em>: <span class="math display">\[w(\mathbf{s}_i) \sim \text{MVN}(\mathbf{0}, \mathbf{R})\]</span></p>
-<ul>
-<li><span class="math inline">\(\mathbf{R}\)</span> is the spatial correlation matrix defined by a covariance function:</li>
-</ul>
-<p><span class="math display">\[\mathbf{R}_{ij} =
-\begin{cases}
-0 \text{ or a very samll value} &amp; \text{if } \mathbf{t}_{i} \neq \mathbf{t}_{j} \\
-\text{follow covariance function}  &amp; \text{otherwise}
-\end{cases}\]</span></p></li>
-<li><p><em>Year-specific Random Effect</em>: same as above.</p></li>
-<li><p><em>Independent Nugget Effect</em>: same as above.</p></li>
+<li>MCMC algorithm.</li>
+<li>Powerful for spato-temporal model.</li>
+<li>Q: support random effects for each year? flexible covariance funtion?</li>
 </ul>
 
 

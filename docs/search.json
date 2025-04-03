@@ -128,9 +128,9 @@
   {
     "objectID": "equation.html",
     "href": "equation.html",
-    "title": "test",
+    "title": "Potential model",
     "section": "",
-    "text": "Model 1: (current use)\n\\[y(\\mathbf{s}_i, \\mathbf{t}) = \\mu(\\mathbf{s}_i,\\mathbf{t}) + w(\\mathbf{s}_i) + u(\\mathbf{t}) + \\epsilon(\\mathbf{s}_i, \\mathbf{t})\\]\nwhere:\n\\(y(\\mathbf{s}_i, \\mathbf{t})\\) is the response variable at location \\(\\mathbf{s}_i\\) and time \\(\\mathbf{t}\\).\nModel 2: (checked)\n\\[y(\\mathbf{s}_i, \\mathbf{t}) = \\mu(\\mathbf{s}_i,\\mathbf{t}) + w(\\mathbf{s}_i, \\mathbf{t}) + \\epsilon(\\mathbf{s}_i, \\mathbf{t})\\]\nwhere:\nModel 3:\n\\[y(\\mathbf{s}_i, \\mathbf{t}) = \\mu(\\mathbf{s}_i,\\mathbf{t}) + w_t(\\mathbf{s}_i) + \\epsilon(\\mathbf{s}_i, \\mathbf{t})\\]\nwhere:\nModel 4:\n\\[y(\\mathbf{s}_i, \\mathbf{t}) = \\mu(\\mathbf{s}_i,\\mathbf{t}) + w(\\mathbf{s}_i) + u(\\mathbf{t}) + \\epsilon(\\mathbf{s}_i, \\mathbf{t})\\]\nwhere:\nPrior distribution \\[ \\tau \\sim \\text{Gamma}(0.001, 0.001) \\] \\[ \\sigma^2 \\sim \\text{Inverse-Gamma}(2.5, 120) \\] \\[ \\phi \\sim \\text{Uniform}\\left(5, 50\\right) \\] \\[ \\tau_{\\mathbf{t}} \\sim \\text{Inverse-Gamma}(2.001, 0.667) \\] \\[ \\text{range} \\sim \\text{Uniform}(0, 1) \\] \\[\\nu \\sim \\text{Uniform}(0.5, 5) \\] \\[\\beta_j \\sim \\text{Normal}(0, 1000) \\quad \\text{for all } j \\]\nInitial values\n\\[\\beta_j = 0\\] \\[ \\tau = 1 \\] \\[ \\sigma^2 = 80\\] \\[ \\phi = 25 \\] \\[ \\tau_{\\mathbf{t}} = 1 \\] \\[ \\text{range} = 0.5 \\] \\[ \\nu = 1 \\]"
+    "text": "Model 1: (current use)\n\\[y(\\mathbf{s}_i, \\mathbf{t}) = \\mu(\\mathbf{s}_i,\\mathbf{t}) + w(\\mathbf{s}_i) + u(\\mathbf{t}) + \\epsilon(\\mathbf{s}_i, \\mathbf{t})\\]\nwhere:\n\\(y(\\mathbf{s}_i, \\mathbf{t})\\) is the response variable at location \\(\\mathbf{s}_i\\) and time \\(\\mathbf{t}\\).\nModel 2:\n\\[y(\\mathbf{s}_i, \\mathbf{t}) = \\mu(\\mathbf{s}_i,\\mathbf{t}) + w(\\mathbf{s}_i, \\mathbf{t}) + \\epsilon(\\mathbf{s}_i, \\mathbf{t})\\]\nwhere:\nModel 3:\n\\[y(\\mathbf{s}_i, \\mathbf{t}) = \\mu(\\mathbf{s}_i,\\mathbf{t}) + w_t(\\mathbf{s}_i) + \\epsilon(\\mathbf{s}_i, \\mathbf{t})\\]\nwhere:\nModel 4:\n\\[y(\\mathbf{s}_i, \\mathbf{t}) = \\mu(\\mathbf{s}_i,\\mathbf{t}) + w(\\mathbf{s}_i) + u(\\mathbf{t}) + \\epsilon(\\mathbf{s}_i, \\mathbf{t})\\]\nwhere:\nPrior distribution \\[ \\tau \\sim \\text{Gamma}(0.001, 0.001) \\] \\[ \\sigma^2 \\sim \\text{Inverse-Gamma}(2.5, 120) \\] \\[ \\phi \\sim \\text{Uniform}\\left(5, 50\\right) \\] \\[ \\tau_{\\mathbf{t}} \\sim \\text{Inverse-Gamma}(2.001, 0.667) \\] \\[ \\text{range} \\sim \\text{Uniform}(0, 1) \\] \\[\\nu \\sim \\text{Uniform}(0.5, 5) \\] \\[\\beta_j \\sim \\text{Normal}(0, 1000) \\quad \\text{for all } j \\]\nInitial values\n\\[\\beta_j = 0\\] \\[ \\tau = 1 \\] \\[ \\sigma^2 = 80\\] \\[ \\phi = 25 \\] \\[ \\tau_{\\mathbf{t}} = 1 \\] \\[ \\text{range} = 0.5 \\] \\[ \\nu = 1 \\]"
   },
   {
     "objectID": "workflow_micro_NYC.html#phenological-indicators-and-optimal-preseason",
@@ -243,5 +243,12 @@
     "title": "Urban phenology updates - Share on lab meeting",
     "section": "5 Conclusion and next step",
     "text": "5 Conclusion and next step\n\nConclusion\n\nOptimal preseason length for phenology varies among genera.\nWithin the city, trees indeed respond to temperature variation, result in phenology variation\nAcross cities, some variation patterns noticed.\n\n\n\nNext steps\n\nWhat can the urban phenology heterogenity be used for? - Goal\n\nThe preview of future warming: compared with the sensitivity in natural environment.\nFine-scale urban phenology: compared with other urban phenology sensitivity detected at coarser scale.\n\nScale up\n\nCities\nGenera\n\nSensitivity\n\nHow about use buffer size"
+  },
+  {
+    "objectID": "equation.html#candidate-package",
+    "href": "equation.html#candidate-package",
+    "title": "Potential model",
+    "section": "Candidate package",
+    "text": "Candidate package\nnimble\n\nMCMC algorithm.\nFlexible and clear for covariance definition.\n\nINLA\n\nINLA algorithm.\nFixed covariance definition.\n\nspBayes\n\nMCMC algorithm.\nPowerful for spato-temporal model.\nQ: support random effects for each year? flexible covariance funtion?"
   }
 ]
