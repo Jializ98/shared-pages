@@ -1,5 +1,5 @@
 ---
-title: "test"
+title: "Potential model"
 format: html
 editor: visual
 ---
@@ -43,7 +43,7 @@ $y(\mathbf{s}_i, \mathbf{t})$ is the response variable at location $\mathbf{s}_i
 
     -   $\epsilon(\mathbf{s}_i, \mathbf{t})$ accounts for measurement error or small-scale variability.
 
-**Model 2: (checked)**
+**Model 2:**
 
 $$y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w(\mathbf{s}_i, \mathbf{t}) + \epsilon(\mathbf{s}_i, \mathbf{t})$$
 
@@ -104,63 +104,21 @@ $$\beta_j = 0$$ $$ \tau = 1 $$ $$ \sigma^2 = 80$$ $$ \phi = 25 $$ $$ \tau_{\math
 -   **Yearly effects**:\
     All yearly random effects are initialized at zero:\
     \$ \text{year\_effect}\_q = 0 ), for all years ( q ).
-    
-    
-    
-    
-    
-    
-## Candidate model
 
+## Candidate package
 
-**Model 2: Use Spatio-temporal Random Effect**
+**`nimble`**
 
-$$y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w(\mathbf{s}_i, \mathbf{t}) + \epsilon(\mathbf{s}_i, \mathbf{t})$$
+-   MCMC algorithm.
+-   Flexible and clear for covariance definition.
 
-where:
+**`INLA`**
 
--   *Fixed Effects*: same as above.
+-   INLA algorithm.
+-   Fixed covariance definition.
 
--   *Spatio-temporal Random Effect*: $$w(\mathbf{s}_i, \mathbf{t}) \sim \text{MVN}(\mathbf{0}, \mathbf{R}_{\mathbf{s}\mathbf{t}})$$
+**`spBayes`**
 
-    -   $\mathbf{R}$ is the spatio-temporal correlation matrix defined by covariance function. The function format is the same.
-
-    -   Instead, $D_{ij}$ is the distance using 3-dimension coordinate, (scaled_longitude, scaled_latitude, scaled_year).
-
--   *Independent Nugget Effect*: same as above.
-
-**Model 3:**
-
-$$y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w_t(\mathbf{s}_i) + \epsilon(\mathbf{s}_i, \mathbf{t})$$
-
-where:
-
--   *Fixed Effects*: same as above.
-
--   *Spatio-temporal Random Effect*: $$w_t(\mathbf{s}_i) \sim \text{MVN}(\mathbf{0}, \mathbf{R}_{\mathbf{t}})$$
-
-    -   $\mathbf{R}_{\mathbf{t}}$ is fitted for each year. Or the parameters in covariance matrix, e.g., $\phi(\mathbf{t}_j) \sim \text{N}(0, \tau^2_{\phi})$
-
--   *Independent Nugget Effect*: same as above.
-
-**Model 4:**
-
-$$y(\mathbf{s}_i, \mathbf{t}) = \mu(\mathbf{s}_i,\mathbf{t}) + w(\mathbf{s}_i) + u(\mathbf{t}) + \epsilon(\mathbf{s}_i, \mathbf{t})$$
-
-where:
-
--   *Fixed Effects*: same as above.
-
--   *Spatially Correlated Random Effect*: $$w(\mathbf{s}_i) \sim \text{MVN}(\mathbf{0}, \mathbf{R})$$
-
-    -   $\mathbf{R}$ is the spatial correlation matrix defined by a covariance function:
-
-    $$\mathbf{R}_{ij} = 
-    \begin{cases} 
-    0 \text{ or a very samll value} & \text{if } \mathbf{t}_{i} \neq \mathbf{t}_{j} \\
-    \text{follow covariance function}  & \text{otherwise}
-    \end{cases}$$
-
--   *Year-specific Random Effect*: same as above.
-
--   *Independent Nugget Effect*: same as above.
+-   MCMC algorithm.
+-   Powerful for spato-temporal model.
+-   Q: support random effects for each year? flexible covariance funtion?
