@@ -6,12 +6,12 @@ Here is a simple flow chart:
 
 ```mermaid
 flowchart TD
-    A([Tidy LOTVS DM]):::done --> B([Taxonomy clean\n(based on A)]):::done
-    C([Download GBIF snapshot]):::done --> D([Retrieve & clean\nspecies occurrences\n(based on B & C)]):::progress
+    A([Tidy LOTVS DM]):::done --> B([Taxonomy clean]):::done
+    C([Download GBIF snapshot]):::done --> D([Retrieve & clean species occurrences]):::progress
     B --> D
-    E([Download CHELSA data]):::done --> F([Get occurrence\nclimate info\n(based on D & E)]):::progress
+    E([Download CHELSA data]):::done --> F([Get occurrence climate info]):::progress
     D --> F
-    F --> G([Niche info\n(based on F)]):::progress
+    F --> G([Niche info]):::progress
 
     classDef done fill:#90ee90,stroke:#333,stroke-width:2px;
     classDef progress fill:#ffe599,stroke:#333,stroke-width:2px;
