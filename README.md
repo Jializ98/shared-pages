@@ -2,12 +2,15 @@
 
 Here is a simple flow chart:
 
+## Workflow Graph
+
 ```mermaid
-graph TD;
-    A-->B;
-    A-->C;
-    B-->D;
-    C-->D;
+flowchart TD
+    A([A]):::done --> B([B]):::done
+    C([C]):::done --> D([D])
+    B --> E([E])
+    D --> E
+    classDef done fill:#90ee90,stroke:#333,stroke-width:2px;
 ```
 
 # Example Repo
