@@ -6,11 +6,19 @@ Here is a simple flow chart:
 
 ```mermaid
 flowchart TD
-    A([A]):::done --> B([B]):::done
-    C([C]):::done --> D([D])
-    B --> E([E])
-    D --> E
+    A([Tidy LOTVS DM]):::done --> B([Taxonomy clean<br>(based on A)]):::done
+    C([Download GBIF snapshot]):::done --> D([Retrieve & clean<br>species occurrences<br>(based on B & C)]):::progress
+    B --> D
+    E([Download CHELSA data]):::done --> F([Get occurrence<br>climate info<br>(based on D & E)]):::progress
+    D --> F
+    F --> G([Niche info<br>(based on F)]):::progress
+
     classDef done fill:#90ee90,stroke:#333,stroke-width:2px;
+    classDef progress fill:#ffe599,stroke:#333,stroke-width:2px;
+
+    class A,B,C,E done;
+    class D,F,G progress;
+
 ```
 
 # Example Repo
