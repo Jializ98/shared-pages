@@ -1,40 +1,40 @@
-name: Research Workflow
+name: Dependency Example Workflow
 
 on:
   push:
-    branches: [ "main" ]
-  workflow_dispatch:
+    branches:
+      - main
 
 jobs:
-  build:
+  A:
     runs-on: ubuntu-latest
     steps:
-      - name: 检出代码
-        uses: actions/checkout@v3
+      - name: Step A
+        run: echo "This is job A"
 
-      - name: 设置 Python 环境
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
+  B:
+    runs-on: ubuntu-latest
+    needs: A
+    steps:
+      - name: Step B
+        run: echo "This is job B, which depends on A"
 
-      - name: 安装依赖
-        run: |
-          pip install -r requirements.txt
+  C:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Step C
+        run: echo "This is job C"
 
-      - name: 运行数据预处理脚本
-        run: |
-          python scripts/preprocess.py
+  D:
+    runs-on: ubuntu-latest
+    needs: C
+    steps:
+      - name: Step D
+        run: echo "This is job D, which depends on C"
 
-      - name: 训练模型
-        run: |
-          python scripts/train_model.py
-
-      - name: 生成结果图表
-        run: |
-          python scripts/visualize_results.py
-
-      - name: 上传结果
-        uses: actions/upload-artifact@v3
-        with:
-          name: analysis-results
-          path: results/
+  E:
+    runs-on: ubuntu-latest
+    needs: [A, D]
+    steps:
+      - name: Step E
+        run: echo "This is job E, which depends on A and D"
