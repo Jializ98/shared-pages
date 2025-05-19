@@ -1,23 +1,30 @@
-name: Dependency Example Workflow
+name: Example Workflow
 
+# This workflow runs on every push to the main branch
 on:
   push:
     branches:
       - main
 
 jobs:
+  # Job A: Sets up the environment
   A:
     runs-on: ubuntu-latest
     steps:
-      - name: Step A
-        run: echo "This is job A"
+      - name: Checkout code # This step checks out the repository code
+        uses: actions/checkout@v4
 
+      - name: Run a script # This step runs a shell script
+        run: echo "Hello from Job A!"
+
+  # Job B: Runs after Job A is complete
   B:
     runs-on: ubuntu-latest
-    needs: A
+    needs: A # This makes Job B depend on Job A
     steps:
-      - name: Step B
-        run: echo "This is job B, which depends on A"
+      - name: Reference to myscript.sh # This step refers to myscript.sh but does not execute it
+        # Reference: ./scripts/myscript.sh
+        run: echo "This step only refers to the script, not executing it."
 
   C:
     runs-on: ubuntu-latest
