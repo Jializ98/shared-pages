@@ -1,36 +1,40 @@
-# This is a basic workflow to help you get started with Actions
+name: Research Workflow
 
-name: CI
-
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-
-  # Allows you to run this workflow manually from the Actions tab
+    branches: [ main ]
   workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
   build:
-    # The type of runner that the job will run on
     runs-on: ubuntu-latest
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
+      - name: 检出代码
+        uses: actions/checkout@v3
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
+      - name: 设置 Python 环境
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
 
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
+      - name: 安装依赖
         run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+          pip install -r requirements.txt
+
+      - name: 运行数据预处理脚本
+        run: |
+          python scripts/preprocess.py
+
+      - name: 训练模型
+        run: |
+          python scripts/train_model.py
+
+      - name: 生成结果图表
+        run: |
+          python scripts/visualize_results.py
+
+      - name: 上传结果
+        uses: actions/upload-artifact@v3
+        with:
+          name: analysis-results
+          path: results/
