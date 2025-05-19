@@ -15,10 +15,6 @@ flowchart TD
 
     classDef done fill:#90ee90,stroke:#333,stroke-width:2px;
     classDef progress fill:#ffe599,stroke:#333,stroke-width:2px;
-
-    class A,B,C,E done;
-    class D,F,G progress;
-
 ```
 
 # Example Repo
